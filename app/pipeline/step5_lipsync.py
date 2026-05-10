@@ -267,12 +267,26 @@ async def _call_syncso(
         else:
             raise TimeoutError("Sync.so 超时（超过 360 秒）")
 
-        # ── 3. 下载结果视频 ───────────────────────────────────
+        # ── 3. 下载结果视频并转码为统一格式 ─────────────────────
         dl_resp = await client.get(result_url)
         dl_resp.raise_for_status()
-        with open(output_path, "wb") as f:
+        tmp_path = output_path + ".tmp.mp4"
+        with open(tmp_path, "wb") as f:
             f.write(dl_resp.content)
-        logger.debug(f"  Sync.so 结果已下载: {output_path}")
+        logger.debug(f"  Sync.so 结果已下载，开始转码: {output_path}")
+
+        # 转码为 H.264 + AAC，与其他片段保持编解码器一致
+        await run_ffmpeg([
+            "-i", tmp_path,
+            "-c:v", "libx264",
+            "-crf", "18",
+            "-c:a", "aac",
+            "-ar", "48000",
+            "-ac", "2",
+            output_path,
+        ], config)
+        Path(tmp_path).unlink(missing_ok=True)
+        logger.debug(f"  Sync.so 转码完成: {output_path}")
 
 
 async def _process_all_replace_audio(task: TranslationTask, config: dict) -> None:

@@ -4,11 +4,11 @@ step6_assemble.py — 最终合成输出
 核心修复：
   - 保留原视频的所有片段（含语音段之间的静音/间隙）
   - 对每段语音用 TTS 音频替换；间隙段保留原始音轨
-  - 对配音音轨重跑 Whisper ASR 生成精准 SRT 时间戳
+  - 对配音音轨重跑 whisper-1 ASR 生成精准 SRT 时间戳
 
 输出产物：
   - output.mp4       ← 干净视频（不烧录字幕）
-  - output.srt       ← 外挂 SRT（Whisper 精准时间戳）
+  - output.srt       ← 外挂 SRT（精准时间戳）
   - dubbed.mp3       ← 独立配音音轨
   - transcript.txt   ← 原文 + 译文对照
 """
@@ -46,14 +46,14 @@ async def assemble_output(task: TranslationTask, config: dict) -> None:
     await _extract_audio_mp3(final_video_path, dubbed_mp3, config)
     task.output_audio_path = dubbed_mp3
 
-    # ── 4. 提取 16kHz WAV 供 Whisper 重新 ASR ────────────
+    # ── 4. 提取 16kHz WAV 供 gpt-4o-transcribe ASR ───────
     dubbed_wav = str(workspace / "dubbed_for_asr.wav")
     await _extract_audio_wav_16k(final_video_path, dubbed_wav, config)
 
-    # ── 5. Whisper ASR → 精准时间戳 → SRT ────────────────
-    logger.info(f"[{task.task_id}] 对配音音轨重跑 Whisper ASR，生成精准时间戳...")
+    # ── 5. whisper-1 → 精准时间戳 → SRT ─────────────────
+    logger.info(f"[{task.task_id}] 对配音音轨重跑 whisper-1 ASR，生成精准时间戳...")
     srt_path = str(output_dir / "output.srt")
-    await _generate_srt_via_whisper(
+    await _generate_srt_via_openai(
         dubbed_wav=dubbed_wav,
         srt_path=srt_path,
         api_key=config["api_keys"]["openai"],
@@ -167,81 +167,52 @@ async def _extract_audio_wav_16k(video_path: str, output_path: str, config: dict
 
 
 # ════════════════════════════════════════════════════════════
-# Whisper ASR → SRT
+# gpt-4o-transcribe ASR → SRT
 # ════════════════════════════════════════════════════════════
 
-async def _generate_srt_via_whisper(
+async def _generate_srt_via_openai(
     dubbed_wav: str,
     srt_path: str,
     api_key: str,
 ) -> None:
     """
-    用 Whisper 对配音音轨重新识别，获取精准时间戳后生成 SRT。
+    用 whisper-1 对配音音轨重新识别，直接输出标准 SRT。
 
     核心逻辑：
       TTS 配音就是最终视频里的声音。对它 ASR 拿到的时间戳
       天然与视频音轨完全对齐，无需任何估算或偏移修正。
-      Whisper 的 segment 级时间戳精确到秒级，满足字幕需求。
+      whisper-1 支持 99 种语言，response_format="srt" 原生输出标准 SRT，
+      无需手动解析 segments。
+      注意：gpt-4o-transcribe 不支持 response_format="srt"，因此使用 whisper-1。
     """
-    client    = AsyncOpenAI(api_key=api_key)
     file_size = Path(dubbed_wav).stat().st_size
-    logger.info(f"[Whisper ASR] 配音音轨大小: {file_size / 1024 / 1024:.1f} MB")
+    logger.info(f"[OpenAI ASR] 配音音轨大小: {file_size / 1024 / 1024:.1f} MB，模型: whisper-1")
 
-    with open(dubbed_wav, "rb") as f:
-        response = await client.audio.transcriptions.create(
-            model="whisper-1",
-            file=f,
-            response_format="verbose_json",
-            timestamp_granularities=["segment"],
-            # 不指定 language，让 Whisper 自动检测目标语言
-        )
+    client = AsyncOpenAI(api_key=api_key)
 
-    segments = response.segments or []
-    logger.info(f"[Whisper ASR] 识别到 {len(segments)} 个字幕段")
-
-    if not segments:
-        logger.warning("[Whisper ASR] 未识别到任何片段，SRT 将为空")
+    try:
+        with open(dubbed_wav, "rb") as f:
+            srt_text = await client.audio.transcriptions.create(
+                model="whisper-1",
+                file=f,
+                response_format="srt",
+            )
+    except Exception as e:
+        logger.warning(f"[OpenAI ASR] 识别失败: {e}，SRT 将为空")
         Path(srt_path).write_text("", encoding="utf-8")
         return
 
-    _write_srt_from_whisper(segments, srt_path)
+    # response_format="srt" 返回纯字符串
+    srt_content = srt_text if isinstance(srt_text, str) else getattr(srt_text, "text", str(srt_text))
+    srt_content = (srt_content or "").strip()
 
+    if not srt_content:
+        logger.warning("[OpenAI ASR] 未识别到任何内容，SRT 将为空")
+    else:
+        line_count = srt_content.count("\n\n") + 1
+        logger.info(f"[OpenAI ASR] SRT 生成成功，约 {line_count} 个字幕段")
 
-def _write_srt_from_whisper(segments: list, output_path: str) -> None:
-    """
-    将 Whisper segments 写成标准 SRT 格式。
-    每个 segment 一条字幕，一句话一行，时间戳精确到毫秒。
-    """
-    lines = []
-    idx   = 1
-
-    for seg in segments:
-        text = getattr(seg, "text", "").strip()
-        if not text:
-            continue
-
-        start = float(seg.start)
-        end   = float(seg.end)
-        if end <= start:
-            end = start + 0.5   # 防止偶发的 start >= end
-
-        lines.append(str(idx))
-        lines.append(f"{_seconds_to_srt_time(start)} --> {_seconds_to_srt_time(end)}")
-        lines.append(text)
-        lines.append("")   # SRT 段间必须有空行
-        idx += 1
-
-    with open(output_path, "w", encoding="utf-8") as f:
-        f.write("\n".join(lines))
-
-
-def _seconds_to_srt_time(seconds: float) -> str:
-    """秒数 → SRT 时间格式 HH:MM:SS,mmm"""
-    ms = int((seconds % 1) * 1000)
-    s  = int(seconds) % 60
-    m  = int(seconds) // 60 % 60
-    h  = int(seconds) // 3600
-    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+    Path(srt_path).write_text(srt_content, encoding="utf-8")
 
 
 def _write_transcript(segments: list[Segment], output_path: str) -> None:

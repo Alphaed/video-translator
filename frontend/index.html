@@ -20,13 +20,13 @@
 
     body { background: var(--ink-0); }
     .layout {
-      max-width: 1200px;
+      max-width: 1440px;
       margin: 0 auto;
       padding: 28px;
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 24px;
-      align-items: start;
+      grid-template-columns: 340px 1fr 320px;
+      gap: 20px;
+      align-items: stretch;  /* 三栏等高 */
     }
     .hero {
       grid-column: 1 / -1;
@@ -35,13 +35,15 @@
     }
     .hero h1 {
       font-family: var(--font-sans-cjk);
-      font-size: 36px; font-weight: 700;
+      font-size: 38px; font-weight: 700;
       color: var(--ink-900);
       display: flex; align-items: center; gap: 12px;
     }
     .hero p { color: var(--ink-500); font-size: 15px; max-width: 60ch; }
-    @media (max-width: 760px) {
+    .col-review { grid-column: 1 / -1; }
+    @media (max-width: 900px) {
       .layout { grid-template-columns: 1fr; }
+      .col-review { grid-column: 1; }
     }
   </style>
   <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
@@ -57,6 +59,7 @@
 <script type="text/babel" src="LiveStatus.jsx"></script>
 <script type="text/babel" src="ReviewPanel.jsx"></script>
 <script type="text/babel" src="OutputPanel.jsx"></script>
+<script type="text/babel" src="PreviewPanel.jsx"></script>
 
 <div id="app"></div>
 
@@ -269,28 +272,33 @@
 
           {/* ASR 确认面板（出现后常驻，确认后切只读）*/}
           {asrPanel && (
-            <ReviewPanel
-              mode="asr"
-              segments={asrPanel.segments}
-              targetLanguage={lang}
-              confirmed={asrPanel.confirmed}
-              loading={reviewLoading}
-              onConfirm={handleConfirmASR}
-            />
+            <div className="col-review">
+              <ReviewPanel
+                mode="asr"
+                segments={asrPanel.segments}
+                targetLanguage={lang}
+                confirmed={asrPanel.confirmed}
+                loading={reviewLoading}
+                onConfirm={handleConfirmASR}
+              />
+            </div>
           )}
 
           {/* 翻译确认面板（出现后常驻，确认后切只读）*/}
           {translationPanel && (
-            <ReviewPanel
-              mode="translation"
-              segments={translationPanel.segments}
-              targetLanguage={lang}
-              confirmed={translationPanel.confirmed}
-              loading={reviewLoading}
-              onConfirm={handleConfirmTranslation}
-            />
+            <div className="col-review">
+              <ReviewPanel
+                mode="translation"
+                segments={translationPanel.segments}
+                targetLanguage={lang}
+                confirmed={translationPanel.confirmed}
+                loading={reviewLoading}
+                onConfirm={handleConfirmTranslation}
+              />
+            </div>
           )}
 
+          {/* 三栏主体：输入设置 | 处理结果 | 合成监看 */}
           <UploadPanel onRun={run} running={running} file={file} setFile={setFile}/>
           <OutputPanel
             activeIndex={activeIndex}
@@ -300,6 +308,12 @@
             taskId={taskId}
             file={file}
             lang={lang}
+          />
+          <PreviewPanel
+            completed={completed}
+            taskId={taskId}
+            lang={lang}
+            progress={progress}
           />
         </main>
       </>

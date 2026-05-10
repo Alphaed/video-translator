@@ -1,7 +1,15 @@
 /* global React, PIPELINE_STEPS */
 const { useState, useEffect, useRef } = React;
 
+// 各语言语速（词/秒），与 config.yaml 保持一致
+const SPEAKING_RATES = {
+  English: 2.5, Japanese: 6.5, Korean: 4.5,
+  Spanish: 3.0, French: 2.8, German: 2.5,
+  Portuguese: 2.8, Arabic: 2.5, Russian: 2.5, Thai: 4.0,
+};
+
 // Per-step messages that stream into the log feed
+// {lang} 占位符在运行时替换为实际语言
 const STEP_MESSAGES = {
   preprocess: [
     '提取视频音轨...',
@@ -19,7 +27,7 @@ const STEP_MESSAGES = {
     '✅ ASR 完成 · 47 segments',
   ],
   translate: [
-    '目标语言: English · 语速 2.5 词/秒',
+    '目标语言: {lang} · 语速 {rate} 词/秒',
     '分批 3 批 · BATCH_SIZE = 20',
     '🌐 批 1/3 · gpt-4o',
     '🌐 批 2/3 · gpt-4o',
@@ -66,7 +74,7 @@ function formatStamp(date) {
   return `${h}:${m}:${s}`;
 }
 
-function LiveStatus({ activeIndex, progress, completed, taskId }) {
+function LiveStatus({ activeIndex, progress, completed, taskId, lang = 'English' }) {
   const [logs, setLogs] = useState([]);
   const [elapsed, setElapsed] = useState(0);
   const [pendingMsgs, setPendingMsgs] = useState([]);
@@ -110,7 +118,11 @@ function LiveStatus({ activeIndex, progress, completed, taskId }) {
       text: `${step.emoji} Step ${activeIndex + 1}: ${step.name}`,
       accent: true, stepKey: step.key,
     }]);
-    setPendingMsgs(msgs.map((m) => ({ text: m, stepKey: step.key })));
+    const rate = SPEAKING_RATES[lang] ?? 2.5;
+    setPendingMsgs(msgs.map((m) => ({
+      text: m.replace('{lang}', lang).replace('{rate}', rate),
+      stepKey: step.key,
+    })));
   }, [activeIndex]);
 
   // Stream queued messages one-by-one
@@ -156,6 +168,7 @@ function LiveStatus({ activeIndex, progress, completed, taskId }) {
   return (
     <div style={{
       display: 'flex', flexDirection: 'column',
+      height: '100%', minHeight: 0,   /* 撑满 grid 的 1fr 行 */
       borderRadius: 'var(--radius-md)', overflow: 'hidden',
       border: '1px solid var(--ink-1000)',
       background: 'var(--ink-1000)',
@@ -226,10 +239,10 @@ function LiveStatus({ activeIndex, progress, completed, taskId }) {
 
       {/* ── live log feed ───────────────────────────── */}
       <div ref={logRef} style={{
-        fontFamily: 'var(--font-mono)', fontSize: 12, lineHeight: 1.65,
+        fontFamily: 'var(--font-mono)', fontSize: 13, lineHeight: 1.75,
         color: '#E8E2D9',
-        padding: '12px 14px',
-        height: 200, overflow: 'auto',
+        padding: '14px 16px',
+        flex: 1, minHeight: 0, overflow: 'auto',
         background: 'var(--ink-1000)',
       }}>
         {logs.length === 0 && (

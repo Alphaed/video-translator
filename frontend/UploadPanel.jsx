@@ -19,7 +19,7 @@ function UploadPanel({ onRun, running, file, setFile }) {
   }
 
   return (
-    <Card style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+    <Card style={{ display: 'flex', flexDirection: 'column', gap: 18, height: '100%', boxSizing: 'border-box' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <span style={{ fontSize: 20 }}>📤</span>
         <h6 style={{ fontFamily: 'var(--font-sans-cjk)', margin: 0, fontSize: 16 }}>输入设置</h6>
@@ -109,6 +109,9 @@ function UploadPanel({ onRun, running, file, setFile }) {
           <li>口型同步只处理含人脸的画面</li>
         </ul>
       </div>
+
+      {/* 撑满剩余高度 */}
+      <div style={{ flex: 1 }}/>
     </Card>
   );
 }

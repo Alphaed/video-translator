@@ -105,6 +105,9 @@ async def replace_audio(
         "-i", video_path,
         "-i", audio_path,
         "-c:v", "copy",          # 视频流直接复制，不重编码（快）
+        "-c:a", "aac",           # 音频统一编码为 AAC，确保与其他片段一致
+        "-ar", "48000",          # 统一采样率 48kHz
+        "-ac", "2",              # 统一双声道
         "-map", "0:v:0",         # 取第一个输入的视频流
         "-map", "1:a:0",         # 取第二个输入的音频流
         "-shortest",             # 以最短流为准截断
@@ -145,7 +148,9 @@ async def slowdown_video_segment(
         "-i", video_path,
         "-filter:v",
         f"setpts={pts_factor:.4f}*PTS,minterpolate=fps=25:mi_mode=blend",
-        "-an",           # 先只处理视频，音频单独处理
+        "-c:v", "libx264",   # 明确指定 H.264，与其他片段保持一致
+        "-crf", "18",        # 高质量编码（0=无损，51=最低质量，18 接近视觉无损）
+        "-an",               # 只处理视频，音频由后续 replace_audio 接管
         output_path,
     ], config)
     logger.debug(f"视频拉伸 x{pts_factor:.2f}: {output_path}")
