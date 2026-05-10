@@ -183,43 +183,155 @@ async def _generate_srt_via_openai(
     api_key: str,
 ) -> None:
     """
-    用 whisper-1 对配音音轨重新识别，直接输出标准 SRT。
+    用 whisper-1 获取词级时间戳，按标点分组后生成精准分句 SRT。
 
-    核心逻辑：
-      TTS 配音就是最终视频里的声音。对它 ASR 拿到的时间戳
-      天然与视频音轨完全对齐，无需任何估算或偏移修正。
-      whisper-1 支持 99 种语言，response_format="srt" 原生输出标准 SRT，
-      无需手动解析 segments。
-      注意：gpt-4o-transcribe 不支持 response_format="srt"，因此使用 whisper-1。
+    流程：
+      1. verbose_json + timestamp_granularities=["word"] → 每个词的真实 start/end
+      2. 按标点把词分组为子句（. ! ? 必断，, ; 达到字数阈值才断）
+      3. 每个子句时间戳 = 第一个词 start → 最后一个词 end（基于实际语音，不是估算）
+      4. 写入标准 SRT
     """
     file_size = Path(dubbed_wav).stat().st_size
-    logger.info(f"[OpenAI ASR] 配音音轨大小: {file_size / 1024 / 1024:.1f} MB，模型: whisper-1")
+    logger.info(f"[OpenAI ASR] 配音音轨大小: {file_size / 1024 / 1024:.1f} MB，模型: whisper-1（词级时间戳）")
 
     client = AsyncOpenAI(api_key=api_key)
 
     try:
         with open(dubbed_wav, "rb") as f:
-            srt_text = await client.audio.transcriptions.create(
+            response = await client.audio.transcriptions.create(
                 model="whisper-1",
                 file=f,
-                response_format="srt",
+                response_format="verbose_json",
+                timestamp_granularities=["segment", "word"],  # segment 含标点，word 含精准时间戳
             )
     except Exception as e:
         logger.warning(f"[OpenAI ASR] 识别失败: {e}，SRT 将为空")
         Path(srt_path).write_text("", encoding="utf-8")
         return
 
-    # response_format="srt" 返回纯字符串
-    srt_content = srt_text if isinstance(srt_text, str) else getattr(srt_text, "text", str(srt_text))
-    srt_content = (srt_content or "").strip()
+    segments = getattr(response, "segments", None) or []
+    words    = getattr(response, "words",    None) or []
 
-    if not srt_content:
-        logger.warning("[OpenAI ASR] 未识别到任何内容，SRT 将为空")
+    if not segments:
+        logger.warning("[OpenAI ASR] 未获取到 segment，SRT 将为空")
+        Path(srt_path).write_text("", encoding="utf-8")
+        return
+
+    logger.info(f"[OpenAI ASR] 获取到 {len(segments)} 个 segment，{len(words)} 个词级时间戳，按标点分句...")
+    srt_content = _words_to_srt(segments, words)
+
+    if not srt_content.strip():
+        logger.warning("[OpenAI ASR] 分句结果为空")
     else:
-        line_count = srt_content.count("\n\n") + 1
-        logger.info(f"[OpenAI ASR] SRT 生成成功，约 {line_count} 个字幕段")
+        count = srt_content.count("\n\n") + 1
+        logger.info(f"[OpenAI ASR] SRT 生成成功，共 {count} 条字幕")
 
     Path(srt_path).write_text(srt_content, encoding="utf-8")
+
+
+def _words_to_srt(segments: list, words: list, min_clause_chars: int = 15) -> str:
+    """
+    用 segment 文本（含标点）+ word 时间戳（精准）生成分句 SRT。
+
+    逻辑：
+      1. 对每个 segment 的文本按标点拆分为子句
+      2. 把该 segment 时间范围内的 words 按字符比例分配给各子句
+      3. 每个子句时间戳 = 分配到的首词 start → 末词 end
+
+    注意：Whisper-1 词级 token 不带标点，标点只在 segment.text 里，
+          因此必须用 segment 提供断句依据，用 words 提供精准时间。
+    """
+    PRIMARY   = frozenset('.!?。！？…')
+    SECONDARY = frozenset(',;，；')
+
+    def _get(obj, attr, default=None):
+        return getattr(obj, attr, None) if hasattr(obj, attr) else obj.get(attr, default)
+
+    def _split_text(text: str) -> list[str]:
+        """按标点把文本拆成子句列表"""
+        clauses, buf, chars = [], [], 0
+        for ch in text:
+            buf.append(ch)
+            chars += 1
+            if ch in PRIMARY:
+                clauses.append(''.join(buf).strip())
+                buf, chars = [], 0
+            elif ch in SECONDARY and chars >= min_clause_chars:
+                clauses.append(''.join(buf).strip())
+                buf, chars = [], 0
+        if buf:
+            tail = ''.join(buf).strip()
+            if tail:
+                clauses.append(tail)
+        return [c for c in clauses if c]
+
+    clauses: list[tuple[float, float, str]] = []
+
+    for seg in segments:
+        seg_start = float(_get(seg, 'start', 0))
+        seg_end   = float(_get(seg, 'end',   seg_start))
+        seg_text  = (_get(seg, 'text', '') or '').strip()
+
+        if not seg_text:
+            continue
+
+        # 拿出属于本 segment 时间范围内的词
+        seg_words = [
+            w for w in words
+            if float(_get(w, 'start', 0)) >= seg_start - 0.15
+            and float(_get(w, 'end', 0))  <= seg_end   + 0.15
+        ]
+
+        sub_clauses = _split_text(seg_text)
+
+        # 无法拆分 → 直接用 segment 时间戳
+        if len(sub_clauses) <= 1:
+            clauses.append((seg_start, seg_end, seg_text))
+            continue
+
+        # 没有词级数据 → 按字符比例在 segment 时间内估算
+        if not seg_words:
+            total_chars = sum(len(c) for c in sub_clauses)
+            cur = seg_start
+            for sub in sub_clauses:
+                ratio   = len(sub) / total_chars if total_chars else 1 / len(sub_clauses)
+                sub_end = cur + (seg_end - seg_start) * ratio
+                clauses.append((round(cur, 3), round(sub_end, 3), sub))
+                cur = sub_end
+            continue
+
+        # 按字符比例把 seg_words 分配给各子句，取首词 start / 末词 end
+        total_chars = sum(len(c) for c in sub_clauses)
+        word_idx    = 0
+        n_words     = len(seg_words)
+        for sub in sub_clauses:
+            ratio    = len(sub) / total_chars if total_chars else 1 / len(sub_clauses)
+            n_assign = max(1, round(n_words * ratio))
+            assigned = seg_words[word_idx: word_idx + n_assign]
+            word_idx = min(word_idx + n_assign, n_words)
+
+            sub_start = float(_get(assigned[0],  'start', seg_start))
+            sub_end   = float(_get(assigned[-1], 'end',   seg_end))
+            clauses.append((sub_start, sub_end, sub))
+
+    # 写成标准 SRT
+    lines = []
+    for idx, (start, end, text) in enumerate(clauses, 1):
+        lines.append(str(idx))
+        lines.append(f"{_seconds_to_srt_time(start)} --> {_seconds_to_srt_time(end)}")
+        lines.append(text)
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def _seconds_to_srt_time(seconds: float) -> str:
+    """秒数 → SRT 时间格式 HH:MM:SS,mmm"""
+    ms = int((seconds % 1) * 1000)
+    s  = int(seconds) % 60
+    m  = int(seconds) // 60 % 60
+    h  = int(seconds) // 3600
+    return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 
 
 def _write_transcript(segments: list[Segment], output_path: str) -> None:
