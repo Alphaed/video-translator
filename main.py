@@ -24,6 +24,7 @@ from app.models.schemas import (
     TranslationTask, TaskStatus, CreateTaskRequest, TaskStatusResponse,
     SegmentOut, SegmentsResponse, ConfirmASRRequest, ConfirmTranslationRequest,
 )
+from pydantic import BaseModel as PydanticBase
 from app.utils.file_utils import ensure_dirs, cleanup_workspace
 from app.pipeline.step1_preprocess import preprocess
 from app.pipeline.step2_asr       import run_asr
@@ -441,6 +442,57 @@ async def delete_task_outputs(task_id: str):
     CONFIRM_EVENTS.pop(f"{task_id}:asr", None)
     CONFIRM_EVENTS.pop(f"{task_id}:translation", None)
     return {"status": "deleted", "task_id": task_id}
+
+
+# ════════════════════════════════════════════════════════════
+# API 配置管理
+# ════════════════════════════════════════════════════════════
+
+class ApiConfigUpdate(PydanticBase):
+    """PUT /config/api 请求体"""
+    api_keys: dict[str, str] = {}
+    models:   dict[str, str] = {}
+
+
+@app.get("/config/api", summary="读取 API Key 及模型配置")
+async def get_api_config():
+    """返回当前 config.yaml 中的 api_keys 和 models 字段（明文，本地工具）"""
+    return {
+        "api_keys": dict(CONFIG.get("api_keys", {})),
+        "models":   dict(CONFIG.get("models",   {})),
+    }
+
+
+@app.put("/config/api", summary="保存 API Key 及模型配置")
+async def update_api_config(body: ApiConfigUpdate):
+    """
+    将前端提交的 api_keys / models 写回 config.yaml，
+    同时更新内存中的 CONFIG（立即生效，无需重启）。
+    """
+    # ── 1. 更新内存 ────────────────────────────────────────
+    if body.api_keys:
+        CONFIG.setdefault("api_keys", {}).update(body.api_keys)
+    if body.models:
+        CONFIG.setdefault("models", {}).update(body.models)
+
+    # ── 2. 读取磁盘 YAML（保留其余字段）──────────────────
+    try:
+        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+            disk_cfg = yaml.safe_load(f) or {}
+
+        if body.api_keys:
+            disk_cfg.setdefault("api_keys", {}).update(body.api_keys)
+        if body.models:
+            disk_cfg.setdefault("models", {}).update(body.models)
+
+        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+            yaml.dump(disk_cfg, f, allow_unicode=True,
+                      default_flow_style=False, sort_keys=False)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"写入 config.yaml 失败: {e}")
+
+    logger.info("✅ config.yaml API 配置已更新")
+    return {"status": "saved"}
 
 
 # ════════════════════════════════════════════════════════════

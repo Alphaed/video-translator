@@ -53,7 +53,7 @@
 <body>
 
 <script type="text/babel" src="Primitives.jsx?v=1"></script>
-<script type="text/babel" src="Header.jsx?v=2"></script>
+<script type="text/babel" src="Header.jsx?v=3"></script>
 <script type="text/babel" src="PipelineStepper.jsx?v=1"></script>
 <script type="text/babel" src="UploadPanel.jsx?v=1"></script>
 <script type="text/babel" src="LiveStatus.jsx?v=1"></script>
@@ -61,6 +61,7 @@
 <script type="text/babel" src="OutputPanel.jsx?v=1"></script>
 <script type="text/babel" src="PreviewPanel.jsx?v=1"></script>
 <script type="text/babel" src="HistoryPanel.jsx?v=1"></script>
+<script type="text/babel" src="ApiPanel.jsx?v=1"></script>
 
 <div id="app"></div>
 
@@ -86,6 +87,7 @@
     const [taskId, setTaskId]       = useState('');
     const [lang, setLang]           = useState('English');
     const [historyOpen, setHistoryOpen] = useState(false);
+    const [apiOpen,     setApiOpen]     = useState(false);
 
     // ── 人工确认面板状态 ─────────────────────────────────
     // 每个面板独立存储：null = 未出现，{segments, confirmed} = 已出现
@@ -255,8 +257,12 @@
 
     return (
       <>
-        <Header onHistoryOpen={() => setHistoryOpen(true)}/>
+        <Header
+          onHistoryOpen={() => setHistoryOpen(true)}
+          onApiOpen={() => setApiOpen(true)}
+        />
         <HistoryPanel open={historyOpen} onClose={() => setHistoryOpen(false)}/>
+        <ApiPanel open={apiOpen} onClose={() => setApiOpen(false)}/>
         <main className="layout">
           <div className="hero">
             <h1>🎬 视频翻译工具</h1>

@@ -1,5 +1,5 @@
 /* global React */
-function Header({ onHistoryOpen }) {
+function Header({ onHistoryOpen, onApiOpen }) {
   return (
     <header style={{
       position: 'sticky', top: 0, zIndex: 10,
@@ -20,7 +20,21 @@ function Header({ onHistoryOpen }) {
             <span style={{ fontSize: 12, color: 'var(--ink-500)' }}>Upload Chinese video · auto translate · subtitles · lip-sync</span>
           </div>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <button
+            onClick={onApiOpen}
+            style={{
+              fontSize: 13, color: 'var(--ink-700)', background: 'transparent',
+              border: 'none', cursor: 'pointer', padding: '4px 8px',
+              borderRadius: 'var(--radius-sm)',
+              fontFamily: 'var(--font-sans-cjk)',
+              transition: 'background var(--dur-base)',
+            }}
+            onMouseEnter={e => e.currentTarget.style.background = 'var(--ink-100)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+          >
+            ⚙️ API 管理
+          </button>
           <button
             onClick={onHistoryOpen}
             style={{
