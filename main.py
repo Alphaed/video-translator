@@ -228,6 +228,13 @@ async def create_task(
         f.write(content)
     logger.info(f"[{task_id}] 收到文件: {file.filename} ({len(content)/1024/1024:.1f} MB)")
 
+    # ── 校验：Voicebox 不支持 Thai ───────────────────────────
+    if target_language == "Thai" and CONFIG.get("tts_provider", "openai") == "voicebox":
+        raise HTTPException(
+            status_code=400,
+            detail="Voicebox 不支持 Thai（泰语），请在 API 管理中将 Step 4 · TTS 切换为 OpenAI，或更改目标语言。",
+        )
+
     # 解析 lipsync 字符串 → bool
     lipsync_enabled = lipsync.lower() not in ("false", "0", "no")
 
@@ -392,6 +399,26 @@ async def download_audio(task_id: str):
     raise HTTPException(status_code=404, detail="音频文件不存在")
 
 
+@app.get("/voicebox/profiles", summary="获取 Voicebox 声音 Profile 列表")
+async def get_voicebox_profiles():
+    """代理转发到本地 Voicebox，返回可用的声音 Profile 列表"""
+    import httpx
+    vb_cfg  = CONFIG.get("voicebox", {})
+    vb_url  = vb_cfg.get("url", "http://127.0.0.1:17493")
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as client:
+            resp = await client.get(f"{vb_url}/profiles")
+            resp.raise_for_status()
+            profiles = resp.json()
+            # 只返回前端需要的字段
+            return [
+                {"id": p.get("id", ""), "name": p.get("name", ""), "language": p.get("language", "")}
+                for p in (profiles if isinstance(profiles, list) else [])
+            ]
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"无法连接 Voicebox（{vb_url}）: {e}")
+
+
 @app.get("/history", summary="获取历史任务列表")
 async def get_history():
     """扫描 outputs/ 目录，返回所有历史任务的摘要信息"""
@@ -450,16 +477,20 @@ async def delete_task_outputs(task_id: str):
 
 class ApiConfigUpdate(PydanticBase):
     """PUT /config/api 请求体"""
-    api_keys: dict[str, str] = {}
-    models:   dict[str, str] = {}
+    api_keys:     dict[str, str] = {}
+    models:       dict[str, str] = {}
+    tts_provider: str            = ""
+    voicebox:     dict[str, str] = {}
 
 
 @app.get("/config/api", summary="读取 API Key 及模型配置")
 async def get_api_config():
-    """返回当前 config.yaml 中的 api_keys 和 models 字段（明文，本地工具）"""
+    """返回当前 config.yaml 中的完整前端配置（明文，本地工具）"""
     return {
-        "api_keys": dict(CONFIG.get("api_keys", {})),
-        "models":   dict(CONFIG.get("models",   {})),
+        "api_keys":     dict(CONFIG.get("api_keys",  {})),
+        "models":       dict(CONFIG.get("models",    {})),
+        "tts_provider": CONFIG.get("tts_provider", "openai"),
+        "voicebox":     dict(CONFIG.get("voicebox", {})),
     }
 
 
@@ -474,6 +505,10 @@ async def update_api_config(body: ApiConfigUpdate):
         CONFIG.setdefault("api_keys", {}).update(body.api_keys)
     if body.models:
         CONFIG.setdefault("models", {}).update(body.models)
+    if body.tts_provider:
+        CONFIG["tts_provider"] = body.tts_provider
+    if body.voicebox:
+        CONFIG.setdefault("voicebox", {}).update(body.voicebox)
 
     # ── 2. 读取磁盘 YAML（保留其余字段）──────────────────
     try:
@@ -484,6 +519,10 @@ async def update_api_config(body: ApiConfigUpdate):
             disk_cfg.setdefault("api_keys", {}).update(body.api_keys)
         if body.models:
             disk_cfg.setdefault("models", {}).update(body.models)
+        if body.tts_provider:
+            disk_cfg["tts_provider"] = body.tts_provider
+        if body.voicebox:
+            disk_cfg.setdefault("voicebox", {}).update(body.voicebox)
 
         with open(CONFIG_PATH, "w", encoding="utf-8") as f:
             yaml.dump(disk_cfg, f, allow_unicode=True,

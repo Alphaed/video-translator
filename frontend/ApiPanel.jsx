@@ -5,18 +5,12 @@
 const { useState, useEffect } = React;
 const _API_CFG = 'http://127.0.0.1:8000';
 
-// ── 遮码：保留前8位，其余替换为 **** ──────────────────────────
-function maskKey(key) {
-  if (!key || key.length <= 8) return key || '';
-  return key.slice(0, 8) + '****';
-}
-
 // ── 单个 Key 输入行 ──────────────────────────────────────────
 function KeyField({ label, value, onChange, placeholder }) {
   const [show, setShow] = useState(false);
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-      <span style={{ width: 72, fontSize: 11, color: 'var(--ink-500)', flexShrink: 0 }}>{label}</span>
+      <span style={{ width: 80, fontSize: 11, color: 'var(--ink-500)', flexShrink: 0 }}>{label}</span>
       <div style={{ flex: 1, position: 'relative' }}>
         <input
           type={show ? 'text' : 'password'}
@@ -34,7 +28,6 @@ function KeyField({ label, value, onChange, placeholder }) {
             outline: 'none',
           }}
         />
-        {/* 显隐切换按钮 */}
         <button
           onClick={() => setShow(s => !s)}
           title={show ? '隐藏' : '显示'}
@@ -52,16 +45,17 @@ function KeyField({ label, value, onChange, placeholder }) {
 }
 
 // ── 普通文本输入行 ────────────────────────────────────────────
-function TextField({ label, value, onChange, disabled, hint }) {
+function TextField({ label, value, onChange, disabled, hint, placeholder }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-      <span style={{ width: 72, fontSize: 11, color: 'var(--ink-500)', flexShrink: 0 }}>{label}</span>
+      <span style={{ width: 80, fontSize: 11, color: 'var(--ink-500)', flexShrink: 0 }}>{label}</span>
       <input
         type="text"
         value={value}
         onChange={e => onChange(e.target.value)}
         disabled={disabled}
         title={hint}
+        placeholder={placeholder || ''}
         style={{
           flex: 1, boxSizing: 'border-box',
           padding: '6px 10px',
@@ -79,20 +73,23 @@ function TextField({ label, value, onChange, disabled, hint }) {
 }
 
 // ── 下拉选择行 ────────────────────────────────────────────────
-function SelectField({ label, value, onChange, options }) {
+function SelectField({ label, value, onChange, options, disabled }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-      <span style={{ width: 72, fontSize: 11, color: 'var(--ink-500)', flexShrink: 0 }}>{label}</span>
+      <span style={{ width: 80, fontSize: 11, color: 'var(--ink-500)', flexShrink: 0 }}>{label}</span>
       <select
         value={value}
         onChange={e => onChange(e.target.value)}
+        disabled={disabled}
         style={{
           flex: 1, padding: '6px 10px',
           fontFamily: 'var(--font-mono)', fontSize: 11,
           border: '1px solid var(--ink-200)',
           borderRadius: 'var(--radius-sm)',
-          background: 'var(--ink-0)', color: 'var(--ink-900)',
-          cursor: 'pointer', outline: 'none',
+          background: disabled ? 'var(--ink-100)' : 'var(--ink-0)',
+          color: disabled ? 'var(--ink-500)' : 'var(--ink-900)',
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          outline: 'none',
         }}
       >
         {options.map(o => (
@@ -112,7 +109,6 @@ function StepCard({ stepLabel, service, badge, children }) {
       overflow: 'hidden',
       marginBottom: 12,
     }}>
-      {/* 卡片标题栏 */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 10,
         padding: '8px 14px',
@@ -136,7 +132,6 @@ function StepCard({ stepLabel, service, badge, children }) {
           </span>
         )}
       </div>
-      {/* 卡片内容 */}
       <div style={{ padding: '12px 14px 4px' }}>
         {children}
       </div>
@@ -144,17 +139,67 @@ function StepCard({ stepLabel, service, badge, children }) {
   );
 }
 
+// ── Provider 切换 Tab ─────────────────────────────────────────
+function ProviderToggle({ value, onChange, options }) {
+  return (
+    <div style={{
+      display: 'flex', gap: 0,
+      border: '1px solid var(--ink-200)',
+      borderRadius: 'var(--radius-sm)',
+      overflow: 'hidden',
+      marginBottom: 12,
+      width: 'fit-content',
+    }}>
+      {options.map((opt, i) => {
+        const active = value === opt.value;
+        return (
+          <button
+            key={opt.value}
+            onClick={() => onChange(opt.value)}
+            style={{
+              padding: '5px 16px',
+              fontSize: 12,
+              fontFamily: 'var(--font-sans-cjk)',
+              border: 'none',
+              borderRight: i < options.length - 1 ? '1px solid var(--ink-200)' : 'none',
+              background: active ? 'var(--accent)' : 'var(--ink-0)',
+              color: active ? '#fff' : 'var(--ink-600)',
+              cursor: 'pointer',
+              fontWeight: active ? 600 : 400,
+              transition: 'background 120ms, color 120ms',
+            }}
+          >
+            {opt.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── 主组件 ────────────────────────────────────────────────────
 function ApiPanel({ open, onClose }) {
-  const [keys,    setKeys]    = useState({ dashscope: '', openai: '', syncso: '' });
-  const [models,  setModels]  = useState({ asr: '', translate: '', tts: '', tts_voice: '' });
-  const [loading, setLoading] = useState(false);
-  const [saving,  setSaving]  = useState(false);
-  const [toast,   setToast]   = useState(null);   // { type: 'success'|'error', msg }
+  const [keys,        setKeys]        = useState({ dashscope: '', openai: '', syncso: '' });
+  const [models,      setModels]      = useState({ asr: '', translate: '', tts: '', tts_voice: 'alloy' });
+  const [ttsProvider, setTtsProvider] = useState('openai');   // 'openai' | 'voicebox'
+  const [voicebox,    setVoicebox]    = useState({ url: 'http://127.0.0.1:17493', profile_id: '', engine: 'qwen', model_size: '1.7B' });
+  const [vbProfiles,  setVbProfiles]  = useState([]);         // [{ id, name, language }]
+  const [vbLoading,   setVbLoading]   = useState(false);      // 加载 Profile 中
+  const [vbError,     setVbError]     = useState('');         // Profile 加载错误信息
+  const [loading,     setLoading]     = useState(false);
+  const [saving,      setSaving]      = useState(false);
+  const [toast,       setToast]       = useState(null);       // { type: 'success'|'error', msg }
 
   useEffect(() => {
     if (open) loadConfig();
   }, [open]);
+
+  // 当切换到 Voicebox 时，自动尝试拉取 Profile 列表
+  useEffect(() => {
+    if (open && ttsProvider === 'voicebox') {
+      loadVbProfiles();
+    }
+  }, [ttsProvider, open]);
 
   async function loadConfig() {
     setLoading(true);
@@ -173,6 +218,16 @@ function ApiPanel({ open, onClose }) {
         tts:       data.models?.tts       || '',
         tts_voice: data.models?.tts_voice || 'alloy',
       });
+      const provider = data.tts_provider || 'openai';
+      setTtsProvider(provider);
+      if (data.voicebox) {
+        setVoicebox({
+          url:        data.voicebox.url        || 'http://127.0.0.1:17493',
+          profile_id: data.voicebox.profile_id || '',
+          engine:     data.voicebox.engine     || 'qwen',
+          model_size: data.voicebox.model_size || '1.7B',
+        });
+      }
     } catch (e) {
       showToast('error', '加载配置失败：' + e.message);
     } finally {
@@ -180,13 +235,41 @@ function ApiPanel({ open, onClose }) {
     }
   }
 
+  async function loadVbProfiles() {
+    setVbLoading(true);
+    setVbError('');
+    try {
+      const res = await fetch(`${_API_CFG}/voicebox/profiles`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || `HTTP ${res.status}`);
+      }
+      const list = await res.json();
+      setVbProfiles(list);
+      if (list.length === 0) {
+        setVbError('已连接 Voicebox，但暂无 Profile（请先在 Voicebox 中创建克隆声音）');
+      }
+    } catch (e) {
+      setVbProfiles([]);
+      setVbError(`无法加载 Profile：${e.message}`);
+    } finally {
+      setVbLoading(false);
+    }
+  }
+
   async function handleSave() {
     setSaving(true);
     try {
+      const body = {
+        api_keys:     keys,
+        models,
+        tts_provider: ttsProvider,
+        voicebox,
+      };
       const res = await fetch(`${_API_CFG}/config/api`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ api_keys: keys, models }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -206,7 +289,8 @@ function ApiPanel({ open, onClose }) {
   }
 
   function setKey(k, v)   { setKeys(prev   => ({ ...prev, [k]: v })); }
-  function setModel(k, v) { setModels(prev => ({ ...prev, [k]: v })); }
+  function setModel(k, v) { setModels(prev  => ({ ...prev, [k]: v })); }
+  function setVb(k, v)    { setVoicebox(prev => ({ ...prev, [k]: v })); }
 
   if (!open) return null;
 
@@ -217,6 +301,32 @@ function ApiPanel({ open, onClose }) {
     { value: 'onyx',    label: 'onyx' },
     { value: 'nova',    label: 'nova' },
     { value: 'shimmer', label: 'shimmer' },
+  ];
+
+  const VB_ENGINES = [
+    { value: 'qwen',             label: 'qwen（推荐）' },
+    { value: 'qwen_custom_voice',label: 'qwen_custom_voice' },
+    { value: 'luxtts',           label: 'luxtts' },
+    { value: 'chatterbox',       label: 'chatterbox' },
+    { value: 'chatterbox_turbo', label: 'chatterbox_turbo' },
+    { value: 'tada',             label: 'tada' },
+    { value: 'kokoro',           label: 'kokoro' },
+  ];
+
+  const VB_MODEL_SIZES = [
+    { value: '0.6B', label: '0.6B（最快）' },
+    { value: '1B',   label: '1B' },
+    { value: '1.7B', label: '1.7B（推荐）' },
+    { value: '3B',   label: '3B（最慢/最准）' },
+  ];
+
+  // Profile 下拉选项：先显示已选择的，再追加从服务获取的
+  const profileOptions = [
+    { value: '', label: vbLoading ? '加载中…' : '（不指定 Profile）' },
+    ...vbProfiles.map(p => ({
+      value: p.id,
+      label: p.name ? `${p.name}${p.language ? ' · ' + p.language : ''}` : p.id,
+    })),
   ];
 
   return (
@@ -233,7 +343,7 @@ function ApiPanel({ open, onClose }) {
       }}
     >
       <div style={{
-        width: '100%', maxWidth: 560,
+        width: '100%', maxWidth: 580,
         maxHeight: '88vh',
         background: 'var(--ink-0)',
         borderRadius: 'var(--radius-xl, 16px)',
@@ -282,7 +392,7 @@ function ApiPanel({ open, onClose }) {
           ) : (
             <>
               {/* Step 2 · ASR */}
-              <StepCard stepLabel="Step 2 · ASR" service="DashScope" badge="paraformer-realtime-v2">
+              <StepCard stepLabel="Step 2 · ASR" service="DashScope">
                 <KeyField
                   label="API Key"
                   value={keys.dashscope}
@@ -312,18 +422,123 @@ function ApiPanel({ open, onClose }) {
               </StepCard>
 
               {/* Step 4 · TTS */}
-              <StepCard stepLabel="Step 4 · TTS" service="OpenAI" badge="使用 Step 3 Key">
-                <TextField
-                  label="TTS 模型"
-                  value={models.tts}
-                  onChange={v => setModel('tts', v)}
+              <StepCard
+                stepLabel="Step 4 · TTS"
+                service={ttsProvider === 'voicebox' ? 'Voicebox（本地）' : 'OpenAI'}
+                badge={ttsProvider === 'openai' ? '使用 Step 3 Key' : undefined}
+              >
+                {/* Provider 切换 */}
+                <ProviderToggle
+                  value={ttsProvider}
+                  onChange={v => { setTtsProvider(v); if (v === 'voicebox') loadVbProfiles(); }}
+                  options={[
+                    { value: 'openai',   label: 'OpenAI TTS' },
+                    { value: 'voicebox', label: 'Voicebox 本地' },
+                  ]}
                 />
-                <SelectField
-                  label="TTS 声音"
-                  value={models.tts_voice}
-                  onChange={v => setModel('tts_voice', v)}
-                  options={TTS_VOICES}
-                />
+
+                {ttsProvider === 'openai' ? (
+                  <>
+                    <TextField
+                      label="TTS 模型"
+                      value={models.tts}
+                      onChange={v => setModel('tts', v)}
+                    />
+                    <SelectField
+                      label="TTS 声音"
+                      value={models.tts_voice}
+                      onChange={v => setModel('tts_voice', v)}
+                      options={TTS_VOICES}
+                    />
+                  </>
+                ) : (
+                  <>
+                    {/* Voicebox 配置 */}
+                    <TextField
+                      label="服务地址"
+                      value={voicebox.url}
+                      onChange={v => setVb('url', v)}
+                      placeholder="http://127.0.0.1:17493"
+                    />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                      <span style={{ width: 80, fontSize: 11, color: 'var(--ink-500)', flexShrink: 0 }}>声音 Profile</span>
+                      <div style={{ flex: 1, display: 'flex', gap: 6 }}>
+                        <select
+                          value={voicebox.profile_id}
+                          onChange={e => setVb('profile_id', e.target.value)}
+                          disabled={vbLoading}
+                          style={{
+                            flex: 1, padding: '6px 10px',
+                            fontFamily: 'var(--font-mono)', fontSize: 11,
+                            border: '1px solid var(--ink-200)',
+                            borderRadius: 'var(--radius-sm)',
+                            background: vbLoading ? 'var(--ink-100)' : 'var(--ink-0)',
+                            color: 'var(--ink-900)', outline: 'none', cursor: 'pointer',
+                          }}
+                        >
+                          {profileOptions.map(o => (
+                            <option key={o.value} value={o.value}>{o.label}</option>
+                          ))}
+                        </select>
+                        <button
+                          onClick={loadVbProfiles}
+                          disabled={vbLoading}
+                          title="刷新 Profile 列表"
+                          style={{
+                            padding: '5px 10px', fontSize: 13,
+                            border: '1px solid var(--ink-200)',
+                            borderRadius: 'var(--radius-sm)',
+                            background: 'var(--ink-50)', cursor: 'pointer',
+                            color: 'var(--ink-600)',
+                          }}
+                        >
+                          {vbLoading ? '…' : '↻'}
+                        </button>
+                      </div>
+                    </div>
+                    {/* Profile 加载错误提示 */}
+                    {vbError && (
+                      <div style={{
+                        marginBottom: 8,
+                        padding: '7px 10px',
+                        borderRadius: 'var(--radius-sm)',
+                        fontSize: 11,
+                        background: vbError.startsWith('已连接') ? '#F0FDF4' : '#FEF2F2',
+                        border: `1px solid ${vbError.startsWith('已连接') ? '#BFE2CD' : '#FECACA'}`,
+                        color: vbError.startsWith('已连接') ? '#166534' : '#991B1B',
+                        lineHeight: 1.5,
+                      }}>
+                        {vbError.startsWith('已连接') ? 'ℹ️ ' : '❌ '}{vbError}
+                      </div>
+                    )}
+
+                    <SelectField
+                      label="引擎"
+                      value={voicebox.engine}
+                      onChange={v => setVb('engine', v)}
+                      options={VB_ENGINES}
+                    />
+                    <SelectField
+                      label="模型大小"
+                      value={voicebox.model_size}
+                      onChange={v => setVb('model_size', v)}
+                      options={VB_MODEL_SIZES}
+                    />
+                    {/* Thai 语言警告 */}
+                    <div style={{
+                      marginTop: 4, marginBottom: 8,
+                      padding: '8px 12px',
+                      background: '#FFFBEB',
+                      border: '1px solid #F6D860',
+                      borderRadius: 'var(--radius-sm)',
+                      fontSize: 11,
+                      color: '#7A5C00',
+                      lineHeight: 1.5,
+                    }}>
+                      ⚠️ Voicebox 不支持 <strong>Thai（泰语）</strong>。选择 Thai 作为目标语言并提交时，后端将返回错误。请切换为 OpenAI TTS 后再翻译泰语视频。
+                    </div>
+                  </>
+                )}
               </StepCard>
 
               {/* Step 5 · 口型同步 */}
