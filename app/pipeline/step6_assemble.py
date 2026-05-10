@@ -13,7 +13,9 @@ step6_assemble.py — 最终合成输出
   - transcript.txt   ← 原文 + 译文对照
 """
 
+import difflib
 import logging
+import re
 from pathlib import Path
 
 from openai import AsyncOpenAI
@@ -60,6 +62,9 @@ async def assemble_output(task: TranslationTask, config: dict) -> None:
     )
     task.output_srt_path = srt_path
     logger.info(f"[{task.task_id}] SRT 已生成: {srt_path}")
+
+    # ── 5b. SRT 词级纠错（用译文替换 Whisper 识别错误的词）──
+    _correct_srt_with_translation(srt_path, task)
 
     # ── 6. 原文 + 译文对照文稿 ──────────────────────────
     transcript_path = str(output_dir / "transcript.txt")
@@ -332,6 +337,164 @@ def _seconds_to_srt_time(seconds: float) -> str:
     m  = int(seconds) // 60 % 60
     h  = int(seconds) // 3600
     return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
+
+
+# ════════════════════════════════════════════════════════════
+# SRT 词级纠错（用人工确认的译文替换 Whisper 识别错误的词）
+# ════════════════════════════════════════════════════════════
+
+def _correct_srt_with_translation(srt_path: str, task: TranslationTask) -> None:
+    """
+    策略：
+      1. 取 Whisper SRT 末尾 5 词，在完整译文中定位截断点
+      2. 截断点（Whisper 最后一词）本身及之后的译文不参与纠错
+      3. 在纠错范围内做词序 diff，1:1 replace 用译文词替换，insert/delete 跳过
+      4. 保留原词的首字母大写状态；保留原词的尾部标点
+      5. 时间戳完全不动
+    """
+    srt_text = Path(srt_path).read_text(encoding="utf-8").strip()
+    if not srt_text:
+        return
+
+    blocks = _parse_srt(srt_text)
+    if not blocks:
+        return
+
+    # ── 构建完整译文 ──────────────────────────────────────────
+    full_translation = " ".join(
+        seg.translated_text.strip()
+        for seg in task.segments
+        if seg.translated_text and seg.translated_text.strip()
+    )
+    if not full_translation:
+        return
+
+    # ── 构建 Whisper 全文词表，记录每词的 (块索引, 块内词索引) ──
+    # whisper_map[i] = (block_idx, word_in_block_idx, original_word_str)
+    whisper_map: list[tuple[int, int, str]] = []
+    for bi, (_, _, _, text) in enumerate(blocks):
+        for wi, w in enumerate(text.split()):
+            whisper_map.append((bi, wi, w))
+
+    if not whisper_map:
+        return
+
+    # ── 定位截断点 ────────────────────────────────────────────
+    ANCHOR = 5
+    anchor_norm = [_norm(w) for _, _, w in whisper_map[-ANCHOR:]]
+    trans_words = full_translation.split()
+    trans_norm  = [_norm(w) for w in trans_words]
+
+    cutoff = _find_anchor(anchor_norm, trans_norm)
+    if cutoff is None:
+        logger.warning("  [SRT纠错] 无法定位截断点，跳过纠错")
+        return
+
+    # cutoff = anchor 最后一词在 trans_words 中的索引（不含该词）
+    trans_correction = trans_words[:cutoff]       # 译文纠错范围
+    whisper_correction = whisper_map[:-1]         # Whisper 纠错范围（不含最后一词）
+
+    trans_cn   = [_norm(w) for w in trans_correction]
+    whisper_cn = [_norm(w) for _, _, w in whisper_correction]
+
+    # ── 词序 diff ─────────────────────────────────────────────
+    replacements: dict[tuple[int, int], str] = {}
+    matcher = difflib.SequenceMatcher(None, whisper_cn, trans_cn, autojunk=False)
+
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag != "replace":
+            continue
+        if (i2 - i1) != 1 or (j2 - j1) != 1:
+            # 多词 replace（实为 insert/delete 混合），跳过
+            continue
+
+        bi, wi, old_word = whisper_correction[i1]
+        new_core = trans_correction[j1]
+
+        # 保留 Whisper 原词的尾部标点（逗号、句号等）
+        trailing = re.search(r"[^\w]+$", old_word)
+        if trailing:
+            new_core = re.sub(r"[^\w]+$", "", new_core) + trailing.group()
+
+        # 保留首字母大写状态
+        if old_word[0].isupper() and new_core and new_core[0].islower():
+            new_core = new_core[0].upper() + new_core[1:]
+
+        replacements[(bi, wi)] = new_core
+        logger.info(f"  [SRT纠错] 块#{bi+1} 词#{wi}: '{old_word}' → '{new_core}'")
+
+    if not replacements:
+        logger.info("  [SRT纠错] 无需替换，SRT 已准确")
+        return
+
+    # ── 写回 SRT ─────────────────────────────────────────────
+    corrected: list[tuple] = []
+    for bi, (idx, start_ts, end_ts, text) in enumerate(blocks):
+        words = text.split()
+        for wi in range(len(words)):
+            if (bi, wi) in replacements:
+                words[wi] = replacements[(bi, wi)]
+        corrected.append((idx, start_ts, end_ts, " ".join(words)))
+
+    Path(srt_path).write_text(_write_srt(corrected), encoding="utf-8")
+    logger.info(f"  [SRT纠错] 完成，替换 {len(replacements)} 个词: {srt_path}")
+
+
+def _norm(word: str) -> str:
+    """去标点、转小写，用于词比较"""
+    return re.sub(r"[^\w]", "", word, flags=re.UNICODE).lower()
+
+
+def _find_anchor(anchor_norm: list[str], trans_norm: list[str]) -> int | None:
+    """
+    从右向左在 trans_norm 中找 anchor_norm 序列。
+    返回 anchor 最后一词的索引（不含该词，即 cutoff = 该索引，
+    调用方取 trans_words[:cutoff] 即排除最后一词）。
+    允许 anchor 中有 1 个词不匹配（应对个别 Whisper 末尾误识别）。
+    """
+    n = len(anchor_norm)
+    if n == 0 or len(trans_norm) < n:
+        return None
+
+    # 精确匹配（从右向左）
+    for i in range(len(trans_norm) - n, -1, -1):
+        if trans_norm[i:i + n] == anchor_norm:
+            return i + n - 1  # 最后一词的索引（调用方 [:cutoff] 不含它）
+
+    # 模糊匹配：允许 1 个词不同
+    for i in range(len(trans_norm) - n, -1, -1):
+        mismatches = sum(a != b for a, b in zip(anchor_norm, trans_norm[i:i + n]))
+        if mismatches <= 1:
+            return i + n - 1
+
+    return None
+
+
+def _parse_srt(content: str) -> list[tuple[int, str, str, str]]:
+    """解析 SRT → [(index, start_ts, end_ts, text), ...]"""
+    blocks = []
+    for block in content.strip().split("\n\n"):
+        lines = [l for l in block.strip().splitlines() if l.strip()]
+        if len(lines) < 3:
+            continue
+        try:
+            idx = int(lines[0].strip())
+        except ValueError:
+            continue
+        ts = lines[1].split("-->")
+        if len(ts) != 2:
+            continue
+        text = " ".join(lines[2:]).strip()
+        blocks.append((idx, ts[0].strip(), ts[1].strip(), text))
+    return blocks
+
+
+def _write_srt(blocks: list[tuple]) -> str:
+    """[(index, start_ts, end_ts, text), ...] → SRT 格式字符串"""
+    parts = []
+    for idx, start_ts, end_ts, text in blocks:
+        parts.append(f"{idx}\n{start_ts} --> {end_ts}\n{text}\n")
+    return "\n".join(parts)
 
 
 def _write_transcript(segments: list[Segment], output_path: str) -> None:
