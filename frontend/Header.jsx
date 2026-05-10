@@ -1,5 +1,5 @@
 /* global React */
-function Header() {
+function Header({ onHistoryOpen }) {
   return (
     <header style={{
       position: 'sticky', top: 0, zIndex: 10,
@@ -21,12 +21,24 @@ function Header() {
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 18 }}>
-          <a href="#" style={{ fontSize: 13, color: 'var(--ink-700)', borderBottom: 'none' }}>📋 任务历史</a>
-          <a href="#" style={{ fontSize: 13, color: 'var(--ink-700)', borderBottom: 'none' }}>📁 outputs/</a>
+          <button
+            onClick={onHistoryOpen}
+            style={{
+              fontSize: 13, color: 'var(--ink-700)', background: 'transparent',
+              border: 'none', cursor: 'pointer', padding: '4px 8px',
+              borderRadius: 'var(--radius-sm)',
+              fontFamily: 'var(--font-sans-cjk)',
+              transition: 'background var(--dur-base)',
+            }}
+            onMouseEnter={e => e.currentTarget.style.background = 'var(--ink-100)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+          >
+            📋 任务历史
+          </button>
           <span style={{
             fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-500)',
             background: 'var(--ink-100)', padding: '4px 10px', borderRadius: 9999,
-          }}>v1.0.0 · localhost:7860</span>
+          }}>v1.0.0 · localhost:8000</span>
         </div>
       </div>
     </header>

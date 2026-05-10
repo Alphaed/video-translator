@@ -5,9 +5,12 @@ main.py — 应用入口
 """
 
 import asyncio
+import json
 import logging
+import shutil
 import uuid
 import yaml
+from datetime import datetime, timezone
 from pathlib import Path
 from contextlib import asynccontextmanager
 
@@ -169,6 +172,22 @@ async def run_pipeline(task: TranslationTask):
         task.current_step = None
         logger.info(f"[{task.task_id}] ✅ 完成 -> {task.output_video_path}")
 
+        # ── 写入历史元数据 JSON ───────────────────────────────
+        output_dir = Path(CONFIG["paths"]["outputs"]) / task.task_id
+        meta = {
+            "task_id": task.task_id,
+            "input_filename": task.input_filename,
+            "target_language": task.target_language,
+            "lipsync_enabled": task.lipsync_enabled,
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+        }
+        try:
+            (output_dir / "meta.json").write_text(
+                json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
+        except Exception as meta_err:
+            logger.warning(f"[{task.task_id}] meta.json 写入失败: {meta_err}")
+
         # 清理中间文件（可选）
         if task_config["misc"]["cleanup_workspace"]:
             cleanup_workspace(task.task_id, task_config)
@@ -215,6 +234,7 @@ async def create_task(
     task = TranslationTask(
         task_id=task_id,
         input_video_path=str(input_path),
+        input_filename=file.filename or "",
         target_language=target_language,
         lipsync_enabled=lipsync_enabled,
         max_gap_sec=max(0.5, min(float(max_gap_sec), 10.0)),  # 限定 0.5~10s 安全范围
@@ -251,20 +271,27 @@ async def get_task(task_id: str):
 
 @app.get("/tasks/{task_id}/download/video", summary="下载输出视频")
 async def download_video(task_id: str):
-    """任务完成后，下载翻译后的视频文件"""
+    """任务完成后，下载翻译后的视频文件（支持历史任务从磁盘读取）"""
     task = TASKS.get(task_id)
-    if not task or task.status != TaskStatus.COMPLETED:
-        raise HTTPException(status_code=404, detail="任务未完成或不存在")
-    return FileResponse(task.output_video_path, media_type="video/mp4")
+    if task and task.status == TaskStatus.COMPLETED and task.output_video_path:
+        return FileResponse(task.output_video_path, media_type="video/mp4")
+    # 历史任务：从磁盘读取
+    disk_path = Path(CONFIG["paths"]["outputs"]) / task_id / "output.mp4"
+    if disk_path.exists():
+        return FileResponse(str(disk_path), media_type="video/mp4")
+    raise HTTPException(status_code=404, detail="视频文件不存在")
 
 
 @app.get("/tasks/{task_id}/download/srt", summary="下载字幕文件")
 async def download_srt(task_id: str):
-    """任务完成后，下载 SRT 字幕文件"""
+    """任务完成后，下载 SRT 字幕文件（支持历史任务从磁盘读取）"""
     task = TASKS.get(task_id)
-    if not task or task.status != TaskStatus.COMPLETED:
-        raise HTTPException(status_code=404, detail="任务未完成或不存在")
-    return FileResponse(task.output_srt_path, media_type="text/plain")
+    if task and task.status == TaskStatus.COMPLETED and task.output_srt_path:
+        return FileResponse(task.output_srt_path, media_type="text/plain")
+    disk_path = Path(CONFIG["paths"]["outputs"]) / task_id / "output.srt"
+    if disk_path.exists():
+        return FileResponse(str(disk_path), media_type="text/plain")
+    raise HTTPException(status_code=404, detail="字幕文件不存在")
 
 
 @app.get("/tasks/{task_id}/segments", response_model=SegmentsResponse, summary="获取片段列表")
@@ -342,11 +369,78 @@ async def confirm_translation(task_id: str, body: ConfirmTranslationRequest):
 
 @app.get("/tasks/{task_id}/download/transcript", summary="下载对照文稿")
 async def download_transcript(task_id: str):
-    """任务完成后，下载原文 + 译文对照文稿"""
+    """任务完成后，下载原文 + 译文对照文稿（支持历史任务从磁盘读取）"""
     task = TASKS.get(task_id)
-    if not task or task.status != TaskStatus.COMPLETED:
-        raise HTTPException(status_code=404, detail="任务未完成或不存在")
-    return FileResponse(task.output_transcript_path, media_type="text/plain")
+    if task and task.status == TaskStatus.COMPLETED and task.output_transcript_path:
+        return FileResponse(task.output_transcript_path, media_type="text/plain")
+    disk_path = Path(CONFIG["paths"]["outputs"]) / task_id / "transcript.txt"
+    if disk_path.exists():
+        return FileResponse(str(disk_path), media_type="text/plain")
+    raise HTTPException(status_code=404, detail="文稿文件不存在")
+
+
+@app.get("/tasks/{task_id}/download/audio", summary="下载配音音轨")
+async def download_audio(task_id: str):
+    """下载 dubbed.mp3 配音音轨（支持历史任务从磁盘读取）"""
+    task = TASKS.get(task_id)
+    if task and task.output_audio_path and Path(task.output_audio_path).exists():
+        return FileResponse(task.output_audio_path, media_type="audio/mpeg", filename="dubbed.mp3")
+    disk_path = Path(CONFIG["paths"]["outputs"]) / task_id / "dubbed.mp3"
+    if disk_path.exists():
+        return FileResponse(str(disk_path), media_type="audio/mpeg", filename="dubbed.mp3")
+    raise HTTPException(status_code=404, detail="音频文件不存在")
+
+
+@app.get("/history", summary="获取历史任务列表")
+async def get_history():
+    """扫描 outputs/ 目录，返回所有历史任务的摘要信息"""
+    outputs_dir = Path(CONFIG["paths"]["outputs"])
+    history = []
+    if outputs_dir.exists():
+        dirs = sorted(
+            (d for d in outputs_dir.iterdir() if d.is_dir()),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        for task_dir in dirs:
+            task_id = task_dir.name
+            meta_file = task_dir / "meta.json"
+            meta: dict = {}
+            if meta_file.exists():
+                try:
+                    meta = json.loads(meta_file.read_text(encoding="utf-8"))
+                except Exception:
+                    pass
+
+            history.append({
+                "task_id": task_id,
+                "target_language": meta.get("target_language", ""),
+                "completed_at": meta.get("completed_at", ""),
+                "input_filename": meta.get("input_filename", ""),
+                "lipsync_enabled": meta.get("lipsync_enabled", False),
+                "has_video": (task_dir / "output.mp4").exists(),
+                "has_srt": (task_dir / "output.srt").exists(),
+                "has_transcript": (task_dir / "transcript.txt").exists(),
+                "has_audio": (task_dir / "dubbed.mp3").exists(),
+            })
+    return {"history": history}
+
+
+@app.delete("/tasks/{task_id}/outputs", summary="删除历史任务输出")
+async def delete_task_outputs(task_id: str):
+    """删除指定任务的 outputs/ 目录（从任务历史中移除）"""
+    outputs_dir = Path(CONFIG["paths"]["outputs"]) / task_id
+    if not outputs_dir.exists():
+        raise HTTPException(status_code=404, detail=f"任务 {task_id} 的输出目录不存在")
+    try:
+        shutil.rmtree(str(outputs_dir))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"删除失败: {e}")
+    # 同时从内存中移除（如果存在）
+    TASKS.pop(task_id, None)
+    CONFIRM_EVENTS.pop(f"{task_id}:asr", None)
+    CONFIRM_EVENTS.pop(f"{task_id}:translation", None)
+    return {"status": "deleted", "task_id": task_id}
 
 
 # ════════════════════════════════════════════════════════════

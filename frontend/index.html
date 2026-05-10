@@ -52,14 +52,15 @@
 </head>
 <body>
 
-<script type="text/babel" src="Primitives.jsx"></script>
-<script type="text/babel" src="Header.jsx"></script>
-<script type="text/babel" src="PipelineStepper.jsx"></script>
-<script type="text/babel" src="UploadPanel.jsx"></script>
-<script type="text/babel" src="LiveStatus.jsx"></script>
-<script type="text/babel" src="ReviewPanel.jsx"></script>
-<script type="text/babel" src="OutputPanel.jsx"></script>
-<script type="text/babel" src="PreviewPanel.jsx"></script>
+<script type="text/babel" src="Primitives.jsx?v=1"></script>
+<script type="text/babel" src="Header.jsx?v=2"></script>
+<script type="text/babel" src="PipelineStepper.jsx?v=1"></script>
+<script type="text/babel" src="UploadPanel.jsx?v=1"></script>
+<script type="text/babel" src="LiveStatus.jsx?v=1"></script>
+<script type="text/babel" src="ReviewPanel.jsx?v=1"></script>
+<script type="text/babel" src="OutputPanel.jsx?v=1"></script>
+<script type="text/babel" src="PreviewPanel.jsx?v=1"></script>
+<script type="text/babel" src="HistoryPanel.jsx?v=1"></script>
 
 <div id="app"></div>
 
@@ -84,6 +85,7 @@
     const [failed, setFailed]       = useState('');
     const [taskId, setTaskId]       = useState('');
     const [lang, setLang]           = useState('English');
+    const [historyOpen, setHistoryOpen] = useState(false);
 
     // ── 人工确认面板状态 ─────────────────────────────────
     // 每个面板独立存储：null = 未出现，{segments, confirmed} = 已出现
@@ -253,7 +255,8 @@
 
     return (
       <>
-        <Header/>
+        <Header onHistoryOpen={() => setHistoryOpen(true)}/>
+        <HistoryPanel open={historyOpen} onClose={() => setHistoryOpen(false)}/>
         <main className="layout">
           <div className="hero">
             <h1>🎬 视频翻译工具</h1>
