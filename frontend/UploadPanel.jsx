@@ -9,6 +9,7 @@ const SUPPORTED_LANGUAGES = [
 function UploadPanel({ onRun, running, file, setFile }) {
   const [lang, setLang] = useState('English');
   const [lipsync, setLipsync] = useState(true);
+  const [maxGap, setMaxGap] = useState(2.0);
   const [drag, setDrag] = useState(false);
   const inputRef = useRef(null);
 
@@ -86,11 +87,34 @@ function UploadPanel({ onRun, running, file, setFile }) {
         hint="调用 Sync.so API（额外费用），仅处理含人脸片段"
       />
 
+      {/* 话间最大间隔 */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontFamily: 'var(--font-sans-cjk)', fontSize: 13, color: 'var(--ink-800)', fontWeight: 500 }}>
+            话间最大间隔
+          </span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--accent)', fontWeight: 600 }}>
+            {maxGap.toFixed(1)} 秒
+          </span>
+        </div>
+        <input
+          type="range"
+          min="0.5" max="5.0" step="0.5"
+          value={maxGap}
+          onChange={(e) => setMaxGap(parseFloat(e.target.value))}
+          style={{ width: '100%', accentColor: 'var(--accent)', cursor: 'pointer' }}
+        />
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--ink-400)' }}>
+          <span>0.5s 紧凑</span>
+          <span>5.0s 宽松</span>
+        </div>
+      </div>
+
       <Button
         variant="primary"
         size="lg"
         disabled={!file || running}
-        onClick={() => onRun({ lang, lipsync })}
+        onClick={() => onRun({ lang, lipsync, maxGap })}
       >
         🚀 {running ? '处理中…' : '开始翻译'}
       </Button>

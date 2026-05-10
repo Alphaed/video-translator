@@ -97,6 +97,7 @@ async def _collect_all_pieces(
 
     total_dur   = get_video_duration(task.input_video_path, config)
     video_path  = task.input_video_path
+    max_gap_sec = getattr(task, "max_gap_sec", 2.0)   # 前端用户设置的最大间隔
     prev_end    = 0.0
     gap_idx     = 0
 
@@ -104,12 +105,18 @@ async def _collect_all_pieces(
         # ── 填充该语音段之前的间隙 ──────────────────────────
         gap_start = prev_end
         gap_end   = seg.start
-        if gap_end - gap_start > 0.05:   # 超过 50ms 才提取，避免极短碎片
+        raw_gap   = gap_end - gap_start
+        if raw_gap > 0.05:   # 超过 50ms 才提取，避免极短碎片
+            # 超出 max_gap_sec 的部分直接丢弃，让节奏更紧凑
+            capped_end = gap_start + min(raw_gap, max_gap_sec)
             gap_path = str(gaps_dir / f"gap_{gap_idx:04d}.mp4")
-            await extract_video_segment(video_path, gap_path, gap_start, gap_end, config)
+            await extract_video_segment(video_path, gap_path, gap_start, capped_end, config)
             pieces.append(gap_path)
             gap_idx += 1
-            logger.debug(f"  间隙 [{gap_start:.2f}s → {gap_end:.2f}s] 已保留")
+            if raw_gap > max_gap_sec:
+                logger.debug(f"  间隙 [{gap_start:.2f}s → {gap_end:.2f}s] 截断至 {max_gap_sec}s（原 {raw_gap:.1f}s）")
+            else:
+                logger.debug(f"  间隙 [{gap_start:.2f}s → {gap_end:.2f}s] 已保留")
 
         # ── 语音段本身 ───────────────────────────────────────
         if seg.lipsynced_segment_path and Path(seg.lipsynced_segment_path).exists():

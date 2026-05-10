@@ -189,6 +189,7 @@ async def create_task(
     file: UploadFile = File(..., description="上传的中文视频文件"),
     target_language: str = Form("English"),
     lipsync: str = Form("true"),
+    max_gap_sec: float = Form(2.0),
 ):
     """
     接收视频文件，创建翻译任务并在后台异步执行流水线。
@@ -216,6 +217,7 @@ async def create_task(
         input_video_path=str(input_path),
         target_language=target_language,
         lipsync_enabled=lipsync_enabled,
+        max_gap_sec=max(0.5, min(float(max_gap_sec), 10.0)),  # 限定 0.5~10s 安全范围
     )
     TASKS[task_id] = task
 

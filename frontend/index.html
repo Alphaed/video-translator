@@ -209,7 +209,7 @@
     }
 
     // ── 提交翻译任务 ──────────────────────────────────────
-    async function run({ lang: chosenLang, lipsync = true }) {
+    async function run({ lang: chosenLang, lipsync = true, maxGap = 2.0 }) {
       if (!file?._raw) return;
       stopPolling();
       setCompleted(false);
@@ -227,6 +227,7 @@
         formData.append('file', file._raw);
         formData.append('target_language', chosenLang);
         formData.append('lipsync', lipsync ? 'true' : 'false');
+        formData.append('max_gap_sec', String(maxGap));
 
         const res = await fetch(`${API}/tasks`, {
           method: 'POST',
