@@ -454,6 +454,57 @@ async def get_history():
     return {"history": history}
 
 
+@app.delete("/cache/all", summary="一键清理所有已完成/失败的任务缓存")
+async def clear_all_cache():
+    """
+    批量删除所有已完成或失败的任务的 outputs/ 和 workspace/ 目录。
+    正在运行 / 等待确认的任务会被跳过，不受影响。
+    返回：deleted（已删除数量）、skipped（跳过数量）、errors（失败列表）
+    """
+    # 当前活跃任务 ID（不能删）
+    active_ids = {
+        tid for tid, t in TASKS.items()
+        if t.status in (
+            TaskStatus.RUNNING,
+            TaskStatus.WAITING_ASR_CONFIRM,
+            TaskStatus.WAITING_TRANSLATION_CONFIRM,
+        )
+    }
+
+    outputs_dir  = Path(CONFIG["paths"]["outputs"])
+    workspace_dir = Path(CONFIG["paths"]["workspace"])
+
+    # 收集磁盘上所有任务目录
+    all_task_ids: set[str] = set()
+    if outputs_dir.exists():
+        all_task_ids.update(d.name for d in outputs_dir.iterdir() if d.is_dir())
+    if workspace_dir.exists():
+        all_task_ids.update(d.name for d in workspace_dir.iterdir() if d.is_dir())
+
+    deleted, skipped, errors = 0, 0, []
+
+    for task_id in all_task_ids:
+        if task_id in active_ids:
+            skipped += 1
+            continue
+        try:
+            for base in (outputs_dir, workspace_dir):
+                target = base / task_id
+                if target.exists():
+                    shutil.rmtree(str(target))
+            # 同步清理内存
+            TASKS.pop(task_id, None)
+            CONFIRM_EVENTS.pop(f"{task_id}:asr", None)
+            CONFIRM_EVENTS.pop(f"{task_id}:translation", None)
+            deleted += 1
+        except Exception as e:
+            errors.append(f"{task_id}: {e}")
+            logger.warning(f"[清理] 删除 {task_id} 失败: {e}")
+
+    logger.info(f"[清理] 完成：已删 {deleted} 个，跳过 {skipped} 个（运行中），失败 {len(errors)} 个")
+    return {"deleted": deleted, "skipped": skipped, "errors": errors}
+
+
 @app.delete("/tasks/{task_id}/outputs", summary="删除历史任务输出")
 async def delete_task_outputs(task_id: str):
     """删除指定任务的 outputs/ 目录（从任务历史中移除）"""
