@@ -235,13 +235,21 @@ async def _call_syncso(
 
     async with httpx.AsyncClient(timeout=300.0) as client:
         # ── 1. 上传并提交任务 ─────────────────────────────────
+        # 根据文件扩展名动态判断 MIME 类型（支持 WAV / MP3）
+        _audio_mime = {
+            ".wav":  "audio/wav",
+            ".mp3":  "audio/mpeg",
+            ".ogg":  "audio/ogg",
+            ".flac": "audio/flac",
+        }.get(Path(audio_path).suffix.lower(), "audio/mpeg")
+
         with open(video_path, "rb") as vf, open(audio_path, "rb") as af:
             resp = await client.post(
                 SYNCSO_LIPSYNC,
                 headers=headers,
                 files={
                     "video": (Path(video_path).name, vf, "video/mp4"),
-                    "audio": (Path(audio_path).name, af, "audio/mpeg"),
+                    "audio": (Path(audio_path).name, af, _audio_mime),
                 },
                 data={"model": model},
             )

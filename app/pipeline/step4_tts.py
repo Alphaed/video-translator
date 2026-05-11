@@ -72,7 +72,9 @@ async def synthesize_tts(task: TranslationTask, config: dict) -> None:
             continue
 
         # ── 合成 TTS 音频 ──────────────────────────────────────
-        tts_path = str(tts_dir / f"seg_{seg.index:04d}_tts.mp3")
+        # Voicebox 中间产物用 WAV（无损），OpenAI TTS 直接输出 MP3
+        tts_ext  = "wav" if provider == "voicebox" else "mp3"
+        tts_path = str(tts_dir / f"seg_{seg.index:04d}_tts.{tts_ext}")
 
         if provider == "voicebox":
             audio_bytes, vb_duration = await _synthesize_voicebox(
@@ -82,6 +84,7 @@ async def synthesize_tts(task: TranslationTask, config: dict) -> None:
             )
             # Voicebox 可能返回 WAV/OGG/MP3 等格式，先写临时文件再用 ffmpeg 统一转码
             # 使用 .tmp 扩展名，避免 ffmpeg 因 .raw 等扩展名误判格式
+            # 输出为无损 PCM WAV，保留完整音色，推迟有损编码到最终 replace_audio 步骤
             raw_path = tts_path + ".tmp"
             with open(raw_path, "wb") as f:
                 f.write(audio_bytes)
@@ -91,7 +94,7 @@ async def synthesize_tts(task: TranslationTask, config: dict) -> None:
                 "-probesize", "100M",
                 "-i", raw_path,
                 "-vn",                        # 忽略视频流（防止 Voicebox 返回带封面的音频）
-                "-c:a", "libmp3lame", "-q:a", "2",
+                "-c:a", "pcm_s16le",          # 无损 PCM，保留原始音色
                 tts_path,
             ], config)
             Path(raw_path).unlink(missing_ok=True)
@@ -408,6 +411,8 @@ async def _align_duration(
     ratio > max_speedup        → Stage 3：标记需要视频拉伸（Step 5/6 处理）
     """
     ratio = seg.timing_ratio
+    # 输出格式继承输入扩展名：WAV（Voicebox）保持无损，MP3（OpenAI）保持原格式
+    src_ext = Path(seg.tts_audio_path).suffix  # ".wav" 或 ".mp3"
 
     if ratio <= 1.0:
         # TTS 比原始短：补静音到原始时长，确保视频片段不被 -shortest 截断
@@ -415,7 +420,7 @@ async def _align_duration(
         tts_dur    = seg.tts_duration
         pad_sec    = target_dur - tts_dur
         if pad_sec > 0.05:   # 超过 50ms 才补，避免无意义处理
-            padded_path = str(tts_dir / f"seg_{seg.index:04d}_padded.mp3")
+            padded_path = str(tts_dir / f"seg_{seg.index:04d}_padded{src_ext}")
             await _pad_audio_with_silence(
                 audio_path=seg.tts_audio_path,
                 output_path=padded_path,
@@ -433,7 +438,7 @@ async def _align_duration(
     elif ratio <= max_speedup:
         # Stage 2：加速 TTS 音频以压缩到原始时长
         # atempo 值 = ratio（ratio=1.15 表示加速 15%）
-        sped_path = str(tts_dir / f"seg_{seg.index:04d}_sped.mp3")
+        sped_path = str(tts_dir / f"seg_{seg.index:04d}_sped{src_ext}")
         await speedup_audio(
             audio_path=seg.tts_audio_path,
             output_path=sped_path,
