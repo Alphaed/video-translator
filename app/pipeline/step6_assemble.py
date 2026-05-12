@@ -66,6 +66,9 @@ async def assemble_output(task: TranslationTask, config: dict) -> None:
     # ── 5b. SRT 词级纠错（用译文替换 Whisper 识别错误的词）──
     _correct_srt_with_translation(srt_path, task)
 
+    # ── 5c. 去除字幕标点符号 ─────────────────────────────
+    _strip_srt_punctuation(srt_path)
+
     # ── 6. 原文 + 译文对照文稿 ──────────────────────────
     transcript_path = str(output_dir / "transcript.txt")
     _write_transcript(task.segments, transcript_path)
@@ -503,6 +506,30 @@ def _write_srt(blocks: list[tuple]) -> str:
     for idx, start_ts, end_ts, text in blocks:
         parts.append(f"{idx}\n{start_ts} --> {end_ts}\n{text}\n")
     return "\n".join(parts)
+
+
+def _strip_srt_punctuation(srt_path: str) -> None:
+    """
+    去除 SRT 字幕文本中的所有标点符号。
+    [^\w\s] 匹配一切非字母/数字/下划线/空白的字符，涵盖中英文及各语言标点。
+    时间戳行完全不动。
+    """
+    srt_text = Path(srt_path).read_text(encoding="utf-8").strip()
+    if not srt_text:
+        return
+
+    blocks = _parse_srt(srt_text)
+    if not blocks:
+        return
+
+    stripped = []
+    for idx, start_ts, end_ts, text in blocks:
+        clean = re.sub(r'[.!?,;:。！？，；：…"「」『』【】()（）\[\]]', "", text)
+        clean = re.sub(r" {2,}", " ", clean).strip()   # 合并多余空格
+        stripped.append((idx, start_ts, end_ts, clean))
+
+    Path(srt_path).write_text(_write_srt(stripped), encoding="utf-8")
+    logger.info(f"  [SRT去标点] 完成: {srt_path}")
 
 
 def _write_transcript(segments: list[Segment], output_path: str) -> None:
