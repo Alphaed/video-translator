@@ -1,5 +1,5 @@
 /* global React, Card, Button, Pill */
-const { useState, useMemo } = React;
+const { useState, useMemo, useRef, useEffect } = React;
 
 // ── 各语言估算朗读速率（字符/秒）──────────────────────────────
 const SPEAK_RATE = {
@@ -27,6 +27,30 @@ function fmtTime(s) {
   const m   = Math.floor(s / 60).toString().padStart(2, '0');
   const sec = (s % 60).toFixed(1).padStart(4, '0');
   return `${m}:${sec}`;
+}
+
+// ── 自动伸高 textarea ──────────────────────────────────────────
+// 内容多少高多少，不出现内部滚轮
+function AutoTextarea({ value, onChange, style, onFocus, onBlur }) {
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!ref.current) return;
+    ref.current.style.height = 'auto';
+    ref.current.style.height = ref.current.scrollHeight + 'px';
+  }, [value]);
+
+  return (
+    <textarea
+      ref={ref}
+      value={value}
+      onChange={onChange}
+      onFocus={onFocus}
+      onBlur={onBlur}
+      rows={1}
+      style={{ ...style, resize: 'none', overflow: 'hidden' }}
+    />
+  );
 }
 
 // ── 单条 ASR 片段行 ────────────────────────────────────────────
@@ -68,20 +92,19 @@ function ASRRow({ seg, onChange, readOnly }) {
           {seg.text}
         </div>
       ) : (
-        <textarea
+        <AutoTextarea
           value={seg.text}
           onChange={(e) => onChange(seg.index, e.target.value)}
-          rows={2}
+          onFocus={(e) => e.target.style.borderColor = 'var(--accent)'}
+          onBlur={(e)  => e.target.style.borderColor = 'var(--ink-200)'}
           style={{
             width: '100%', boxSizing: 'border-box',
             fontFamily: 'var(--font-sans-cjk)', fontSize: 14, lineHeight: 1.6,
             padding: '8px 10px',
             background: 'var(--ink-50)', border: '1px solid var(--ink-200)',
             borderRadius: 'var(--radius-sm)', color: 'var(--ink-900)',
-            resize: 'vertical', outline: 'none',
+            outline: 'none',
           }}
-          onFocus={(e) => e.target.style.borderColor = 'var(--accent)'}
-          onBlur={(e)  => e.target.style.borderColor = 'var(--ink-200)'}
         />
       )}
 
@@ -148,20 +171,19 @@ function TranslationRow({ seg, targetLang, onChange, readOnly }) {
           {seg.translated}
         </div>
       ) : (
-        <textarea
+        <AutoTextarea
           value={seg.translated}
           onChange={(e) => onChange(seg.index, e.target.value)}
-          rows={2}
+          onFocus={(e) => e.target.style.borderColor = 'var(--accent)'}
+          onBlur={(e)  => e.target.style.borderColor = 'var(--ink-200)'}
           style={{
             width: '100%', boxSizing: 'border-box',
             fontFamily: 'var(--font-sans-latin)', fontSize: 14, lineHeight: 1.6,
             padding: '8px 10px',
             background: 'var(--ink-50)', border: '1px solid var(--ink-200)',
             borderRadius: 'var(--radius-sm)', color: 'var(--ink-900)',
-            resize: 'vertical', outline: 'none',
+            outline: 'none',
           }}
-          onFocus={(e) => e.target.style.borderColor = 'var(--accent)'}
-          onBlur={(e)  => e.target.style.borderColor = 'var(--ink-200)'}
         />
       )}
 
@@ -177,8 +199,6 @@ function TranslationRow({ seg, targetLang, onChange, readOnly }) {
 }
 
 // ── 主组件 ─────────────────────────────────────────────────────
-// confirmed=false → 可编辑 + 显示确认按钮
-// confirmed=true  → 只读 + 显示"已确认"横幅，面板常驻不消失
 function ReviewPanel({ mode, segments, targetLanguage, onConfirm, loading, confirmed }) {
   const isASR = mode === 'asr';
 
@@ -291,8 +311,8 @@ function ReviewPanel({ mode, segments, targetLanguage, onConfirm, loading, confi
         </div>
       </div>
 
-      {/* ── 片段列表 ───────────────────────────────────── */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 520, overflowY: 'auto' }}>
+      {/* ── 片段列表（无限高，随内容撑开，无内部滚轮）── */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {rows.map((row) =>
           isASR
             ? <ASRRow         key={row.index} seg={row} readOnly={confirmed} onChange={handleChange} />
