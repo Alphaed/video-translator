@@ -7,6 +7,7 @@ main.py — 应用入口
 import asyncio
 import json
 import logging
+import os
 import shutil
 import uuid
 import yaml
@@ -41,9 +42,16 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ── 加载全局配置 ──────────────────────────────────────────────
-CONFIG_PATH = Path(__file__).parent / "config.yaml"
+# 打包版本通过 VT_CONFIG_PATH 环境变量指向用户数据目录中的 config.yaml
+CONFIG_PATH = Path(os.environ.get("VT_CONFIG_PATH", str(Path(__file__).parent / "config.yaml")))
 with open(CONFIG_PATH, "r", encoding="utf-8") as f:
     CONFIG = yaml.safe_load(f)
+
+# 打包版本：用环境变量覆盖路径，确保输出写入用户目录而非应用包内
+if "VT_OUTPUTS_DIR" in os.environ:
+    CONFIG.setdefault("paths", {})["outputs"] = os.environ["VT_OUTPUTS_DIR"]
+if "VT_WORKSPACE_DIR" in os.environ:
+    CONFIG.setdefault("paths", {})["workspace"] = os.environ["VT_WORKSPACE_DIR"]
 
 # ── 内存中的任务存储（生产环境可换成数据库）────────────────────
 # key: task_id, value: TranslationTask
@@ -86,7 +94,10 @@ app.add_middleware(
 )
 
 # ── 静态文件：托管前端页面 ────────────────────────────────────
-_frontend_dir = Path(__file__).parent / "frontend"
+# 打包后 __file__ 可能指向 PyInstaller 临时目录，用 sys._MEIPASS 兜底
+import sys as _sys
+_BASE = Path(getattr(_sys, "_MEIPASS", Path(__file__).parent))
+_frontend_dir = _BASE / "frontend"
 if _frontend_dir.exists():
     app.mount("/ui", StaticFiles(directory=str(_frontend_dir), html=True), name="frontend")
     assets_dir = _frontend_dir / "assets"

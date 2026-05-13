@@ -6,21 +6,32 @@
 
 # ── API Keys ─────────────────────────────────────────────────
 api_keys:
-  dashscope: "YOUR_DASHSCOPE_API_KEY"   # 阿里云 DashScope（Qwen3-ASR-Flash）
+  dashscope: "YOUR_DASHSCOPE_API_KEY"   # 阿里云 DashScope（Qwen3-ASR-Flash 语音识别）
   openai: "YOUR_OPENAI_API_KEY"         # OpenAI（翻译 + TTS）
-  syncso: "YOUR_SYNCSO_API_KEY"         # Sync.so（口型同步）
+  syncso: "YOUR_SYNCSO_API_KEY"         # Sync.so（口型同步，不用口型同步可留空）
 
 # ── 模型配置 ──────────────────────────────────────────────────
 models:
   asr: "qwen3-asr-flash"                # 阿里云语音识别模型
-  translate: "gpt-4o"                   # 翻译模型（可换 o3 等）
-  tts: "tts-1-hd"                       # OpenAI TTS 模型（最高质量）
-  tts_voice: "alloy"                    # TTS 声音（alloy/echo/fable/onyx/nova/shimmer）
+  translate: "gpt-4o"                   # 翻译模型（可换 gpt-4o-mini 等）
+  tts: "tts-1-hd"                       # OpenAI TTS 模型（tts-1 / tts-1-hd）
+  tts_voice: "echo"                     # TTS 声音（alloy/echo/fable/onyx/nova/shimmer）
+
+# ── TTS 提供方 ────────────────────────────────────────────────
+# 可选值：openai（云端）、voicebox（本地 Voicebox 服务）
+tts_provider: "openai"
+
+# ── Voicebox 本地 TTS 配置（tts_provider=voicebox 时生效）──────
+voicebox:
+  url: "http://127.0.0.1:17493"         # Voicebox 服务地址
+  profile_id: "YOUR_VOICEBOX_PROFILE_ID" # 声音 Profile ID
+  engine: "qwen"                        # 引擎（qwen / cosyvoice 等）
+  model_size: "1.7B"                    # 模型大小
 
 # ── 翻译配置 ──────────────────────────────────────────────────
 translation:
-  target_language: "English"            # 目标语言（中文填"中文"也可）
-  # 各语言平均语速（词/秒），用于计算约束字数
+  target_language: "English"            # 目标语言
+  # 各语言平均语速（字/秒），用于计算约束字数，一般不需要修改
   speaking_rates:
     English: 2.5
     Japanese: 6.5
@@ -28,16 +39,17 @@ translation:
     Spanish: 3.0
     French: 2.8
     German: 2.5
+    Portuguese: 2.8
+    Arabic: 2.3
+    Russian: 2.5
+    Thai: 3.0
   max_retries: 2                        # 翻译超长时最多重试次数
 
 # ── 时长对齐配置 ──────────────────────────────────────────────
 timing:
-  # 第二阶段：TTS 音频加速上限（超过此比例进入第三阶段）
-  max_audio_speedup_ratio: 1.20         # 最多加速 20%
-  # 第三阶段：视频拉伸上限
-  max_video_stretch_ratio: 1.30         # 最多拉伸 30%
-  # 超过此比例触发重新翻译
-  retranslate_threshold: 1.50
+  max_audio_speedup_ratio: 1.20         # TTS 音频最多加速 20%
+  max_video_stretch_ratio: 1.30         # 视频最多拉伸 30%
+  retranslate_threshold: 1.50           # 超过此比例触发重新翻译
 
 # ── 口型同步配置 ──────────────────────────────────────────────
 lipsync:
@@ -49,11 +61,10 @@ lipsync:
 paths:
   workspace: "./workspace"              # 中间文件临时目录
   outputs: "./outputs"                  # 最终输出目录
-  # FFmpeg 可执行文件路径（macOS 用 brew install ffmpeg 后通常在此）
-  ffmpeg: "ffmpeg"
-  ffprobe: "ffprobe"
+  ffmpeg: "ffmpeg"                      # FFmpeg 路径（brew install ffmpeg 后通常直接用 ffmpeg）
+  ffprobe: "ffprobe"                    # FFprobe 路径
 
 # ── 其他配置 ──────────────────────────────────────────────────
 misc:
   log_level: "INFO"                     # 日志级别（DEBUG/INFO/WARNING）
-  cleanup_workspace: true               # 完成后清理中间文件
+  cleanup_workspace: true               # 完成后自动清理中间文件

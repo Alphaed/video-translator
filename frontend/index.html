@@ -2,7 +2,10 @@
 <html lang="zh">
 <head>
   <meta charset="utf-8">
-  <title>视频翻译工具 · UI Kit</title>
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>视频翻译工具</title>
   <link rel="stylesheet" href="colors_and_type.css">
   <style>
     /* keyframes referenced by Primitives + Stepper */
@@ -53,23 +56,23 @@
 <body>
 
 <script type="text/babel" src="Primitives.jsx?v=1"></script>
-<script type="text/babel" src="Header.jsx?v=4"></script>
+<script type="text/babel" src="Header.jsx?v=6"></script>
 <script type="text/babel" src="PipelineStepper.jsx?v=1"></script>
-<script type="text/babel" src="UploadPanel.jsx?v=1"></script>
+<script type="text/babel" src="UploadPanel.jsx?v=2"></script>
 <script type="text/babel" src="LiveStatus.jsx?v=1"></script>
 <script type="text/babel" src="ReviewPanel.jsx?v=2"></script>
-<script type="text/babel" src="OutputPanel.jsx?v=1"></script>
-<script type="text/babel" src="PreviewPanel.jsx?v=1"></script>
-<script type="text/babel" src="HistoryPanel.jsx?v=1"></script>
-<script type="text/babel" src="ApiPanel.jsx?v=4"></script>
+<script type="text/babel" src="OutputPanel.jsx?v=2"></script>
+<script type="text/babel" src="PreviewPanel.jsx?v=2"></script>
+<script type="text/babel" src="HistoryPanel.jsx?v=2"></script>
+<script type="text/babel" src="ApiPanel.jsx?v=5"></script>
 
 <div id="app"></div>
 
 <script type="text/babel">
   const { useState, useEffect, useRef, useCallback } = React;
 
-  // ── 后端地址 ──────────────────────────────────────────────
-  const API = 'http://127.0.0.1:8000';
+  // ── 后端地址（自动跟随实际端口，避免端口被占用时请求失败）──
+  const API = window.location.origin;
 
   // 步骤名称 → activeIndex 映射（与后端 current_step 字段对应）
   const STEP_INDEX = {
@@ -245,7 +248,7 @@
         setTaskId(data.task_id);
         startPolling(data.task_id);
       } catch (e) {
-        setFailed(`提交失败: ${e.message}（请确认后端已启动 python main.py）`);
+        setFailed(`提交失败: ${e.message}（请确认 FFmpeg 已安装，或重启 App 后重试）`);
         setActiveIndex(-1);
         setProgress(0);
       }
@@ -255,17 +258,36 @@
 
     const running = activeIndex >= 0 || (asrPanel && !asrPanel.confirmed) || (translationPanel && !translationPanel.confirmed);
 
+    // 有进行中的任务（未完成、未失败）时需要二次确认
+    const hasActiveTask = !!taskId && !completed && !failed;
+
+    // 重置所有状态回初始
+    const handleReset = useCallback(() => {
+      stopPolling();
+      setFile(null);
+      setTaskId('');
+      setActiveIndex(-1);
+      setConfirmStep(-1);
+      setProgress(0);
+      setCompleted(false);
+      setFailed('');
+      setAsrPanel(null);
+      setTranslationPanel(null);
+    }, [stopPolling]);
+
     return (
       <>
         <Header
           onHistoryOpen={() => setHistoryOpen(true)}
           onApiOpen={() => setApiOpen(true)}
+          onNewTask={handleReset}
+          hasActiveTask={hasActiveTask}
         />
         <HistoryPanel open={historyOpen} onClose={() => setHistoryOpen(false)}/>
         <ApiPanel open={apiOpen} onClose={() => setApiOpen(false)}/>
         <main className="layout">
           <div className="hero">
-            <h1>🎬 视频翻译工具</h1>
+            <h1>视频翻译工具</h1>
             <p>上传中文视频，自动翻译为目标语言 · 支持字幕 · 口型同步</p>
           </div>
 

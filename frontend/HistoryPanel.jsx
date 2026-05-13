@@ -3,7 +3,7 @@
    功能：列表展示 / 视频预览 / 文件下载 / 删除历史 */
 
 const { useState, useEffect, useRef } = React;
-const _API = 'http://127.0.0.1:8000';
+const _API = window.location.origin;
 
 // ── 工具函数 ──────────────────────────────────────────────────
 
@@ -34,7 +34,6 @@ function TaskListItem({ item, selected, onClick }) {
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-        <span style={{ fontSize: 14 }}>{item.has_video ? '🎬' : '⚙️'}</span>
         <span style={{
           fontFamily: 'var(--font-mono)', fontSize: 11,
           color: isSelected ? 'var(--accent)' : 'var(--ink-700)',
@@ -69,7 +68,7 @@ function TaskListItem({ item, selected, onClick }) {
   );
 }
 
-function DownloadRow({ icon, label, desc, url, filename, disabled }) {
+function DownloadRow({ label, desc, url, filename, disabled }) {
   function handleDownload() {
     if (disabled) return;
     const a = document.createElement('a');
@@ -86,7 +85,6 @@ function DownloadRow({ icon, label, desc, url, filename, disabled }) {
       border: '1px solid var(--ink-150)',
       opacity: disabled ? 0.45 : 1,
     }}>
-      <span style={{ fontSize: 16 }}>{icon}</span>
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--ink-900)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{filename}</div>
         <div style={{ fontSize: 10, color: 'var(--ink-500)', marginTop: 1 }}>{desc}</div>
@@ -127,7 +125,6 @@ function DetailPane({ item, onDelete }) {
         alignItems: 'center', justifyContent: 'center',
         color: 'var(--ink-400)', gap: 12,
       }}>
-        <span style={{ fontSize: 40, opacity: 0.4 }}>📂</span>
         <span style={{ fontFamily: 'var(--font-sans-cjk)', fontSize: 14 }}>从左侧选择一条历史记录</span>
       </div>
     );
@@ -197,10 +194,10 @@ function DetailPane({ item, onDelete }) {
       {/* ── 下载文件 ─────────────────────────────────── */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
         <div style={{ fontSize: 11, color: 'var(--ink-500)', fontWeight: 600, marginBottom: 2, paddingLeft: 2 }}>下载文件</div>
-        <DownloadRow icon="🎞️" label="下载视频" desc="翻译配音视频" url={`${base}/video`} filename="output.mp4" disabled={!item.has_video}/>
-        <DownloadRow icon="📝" label="下载字幕" desc="SRT 字幕文件" url={`${base}/srt`} filename="output.srt" disabled={!item.has_srt}/>
-        <DownloadRow icon="🎵" label="下载配音" desc="独立配音音轨" url={`${base}/audio`} filename="dubbed.mp3" disabled={!item.has_audio}/>
-        <DownloadRow icon="📄" label="下载文稿" desc="原文 / 译文对照" url={`${base}/transcript`} filename="transcript.txt" disabled={!item.has_transcript}/>
+        <DownloadRow label="下载视频" desc="翻译配音视频" url={`${base}/video`} filename="output.mp4" disabled={!item.has_video}/>
+        <DownloadRow label="下载字幕" desc="SRT 字幕文件" url={`${base}/srt`} filename="output.srt" disabled={!item.has_srt}/>
+        <DownloadRow label="下载配音" desc="独立配音音轨" url={`${base}/audio`} filename="dubbed.mp3" disabled={!item.has_audio}/>
+        <DownloadRow label="下载文稿" desc="原文 / 译文对照" url={`${base}/transcript`} filename="transcript.txt" disabled={!item.has_transcript}/>
       </div>
 
       {/* ── 删除按钮 ─────────────────────────────────── */}
@@ -217,7 +214,7 @@ function DetailPane({ item, onDelete }) {
               transition: 'background var(--dur-base)',
             }}
           >
-            🗑️ 删除此记录
+            删除此记录
           </button>
         ) : (
           <div style={{ display: 'flex', gap: 8 }}>
@@ -324,7 +321,6 @@ function HistoryPanel({ open, onClose }) {
           flexShrink: 0,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: 20 }}>📋</span>
             <h6 style={{ fontFamily: 'var(--font-sans-cjk)', margin: 0, fontSize: 17, color: 'var(--ink-900)' }}>任务历史</h6>
             {!loading && (
               <span style={{
@@ -346,7 +342,7 @@ function HistoryPanel({ open, onClose }) {
                 fontSize: 13, color: 'var(--ink-600)',
               }}
             >
-              🔄 刷新
+              刷新
             </button>
             <button
               onClick={onClose}
@@ -384,7 +380,6 @@ function HistoryPanel({ open, onClose }) {
             )}
             {!loading && !error && history.length === 0 && (
               <div style={{ padding: 20, textAlign: 'center', color: 'var(--ink-400)', fontSize: 13 }}>
-                <div style={{ fontSize: 32, opacity: 0.3, marginBottom: 8 }}>📭</div>
                 暂无历史记录
               </div>
             )}

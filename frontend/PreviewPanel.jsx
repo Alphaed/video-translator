@@ -1,7 +1,7 @@
 /* global React, Card, Pill */
 const { useRef, useState } = React;
 
-const API = 'http://127.0.0.1:8000';
+const API = window.location.origin;
 
 function PreviewPanel({ completed, taskId, lang, progress }) {
   const videoRef = useRef(null);
@@ -25,7 +25,6 @@ function PreviewPanel({ completed, taskId, lang, progress }) {
       {/* ── 标题 ─────────────────────────────────── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 20 }}>🎬</span>
           <h6 style={{ fontFamily: 'var(--font-sans-cjk)', margin: 0, fontSize: 16 }}>合成监看</h6>
         </div>
         {completed

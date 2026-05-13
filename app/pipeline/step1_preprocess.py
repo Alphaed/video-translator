@@ -13,12 +13,34 @@ import torch
 import torchaudio
 import demucs.separate
 
-# 强制使用 soundfile 后端保存音频
-# torchaudio 2.x 新版本默认尝试 torchcodec，在 macOS 上可能未安装
+# ── torchaudio.save 兼容补丁 ──────────────────────────────────
+# torchaudio 2.x 新版本默认走 torchcodec（需要 FFmpeg 共享库）
+# 在 PyInstaller 打包环境中 torchcodec 无法加载，回退到 soundfile
 try:
     torchaudio.set_audio_backend("soundfile")
 except Exception:
-    pass  # 部分版本已弃用此方法，忽略即可
+    pass  # 新版本已废弃此方法
+
+try:
+    import soundfile as _sf
+
+    _orig_ta_save = torchaudio.save
+
+    def _safe_ta_save(uri, src, sample_rate, channels_first=True, **kwargs):
+        try:
+            return _orig_ta_save(uri, src, sample_rate,
+                                 channels_first=channels_first, **kwargs)
+        except (RuntimeError, ImportError):
+            # torchcodec 不可用，直接用 soundfile 保存
+            import numpy as _np
+            data = src.detach().cpu().numpy() if isinstance(src, torch.Tensor) else src
+            if channels_first and data.ndim == 2:
+                data = data.T          # soundfile 期望 (frames, channels)
+            _sf.write(str(uri), data, sample_rate)
+
+    torchaudio.save = _safe_ta_save
+except Exception:
+    pass  # soundfile 不可用则保持原样，运行时再报错
 
 from app.models.schemas import TranslationTask
 from app.utils.file_utils import get_task_workspace

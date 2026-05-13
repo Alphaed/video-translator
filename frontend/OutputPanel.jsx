@@ -15,7 +15,6 @@ function OutputPanel({ activeIndex, confirmStep = -1, progress, completed, taskI
       {/* ── 标题 ─────────────────────────────────── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 20 }}>⚙️</span>
           <h6 style={{ fontFamily: 'var(--font-sans-cjk)', margin: 0, fontSize: 16 }}>处理结果</h6>
         </div>
         {idle      && <Pill tone="pending">等待上传视频</Pill>}

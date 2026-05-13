@@ -3,7 +3,7 @@
    按流水线步骤分组展示所有外部 API，支持编辑 Key 和模型并保存到后端 */
 
 const { useState, useEffect } = React;
-const _API_CFG = 'http://127.0.0.1:8000';
+const _API_CFG = window.location.origin;
 
 // ── 单个 Key 输入行 ──────────────────────────────────────────
 function KeyField({ label, value, onChange, placeholder }) {
@@ -37,7 +37,7 @@ function KeyField({ label, value, onChange, placeholder }) {
             padding: 2, color: 'var(--ink-400)', fontSize: 13, lineHeight: 1,
           }}
         >
-          {show ? '🙈' : '👁'}
+          {show ? '隐藏' : '显示'}
         </button>
       </div>
     </div>
@@ -275,7 +275,7 @@ function ApiPanel({ open, onClose }) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.detail || `HTTP ${res.status}`);
       }
-      showToast('success', '✅ 配置已保存，立即生效');
+      showToast('success', '配置已保存，立即生效');
     } catch (e) {
       showToast('error', '保存失败：' + e.message);
     } finally {
@@ -361,7 +361,6 @@ function ApiPanel({ open, onClose }) {
           flexShrink: 0,
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: 20 }}>⚙️</span>
             <h6 style={{ fontFamily: 'var(--font-sans-cjk)', margin: 0, fontSize: 17, color: 'var(--ink-900)' }}>
               API 管理
             </h6>
@@ -508,7 +507,7 @@ function ApiPanel({ open, onClose }) {
                         color: vbError.startsWith('已连接') ? '#166534' : '#991B1B',
                         lineHeight: 1.5,
                       }}>
-                        {vbError.startsWith('已连接') ? 'ℹ️ ' : '❌ '}{vbError}
+                        {vbError}
                       </div>
                     )}
 
@@ -535,7 +534,7 @@ function ApiPanel({ open, onClose }) {
                       color: '#7A5C00',
                       lineHeight: 1.5,
                     }}>
-                      ⚠️ Voicebox 不支持 <strong>Thai（泰语）</strong>。选择 Thai 作为目标语言并提交时，后端将返回错误。请切换为 OpenAI TTS 后再翻译泰语视频。
+                      Voicebox 不支持 <strong>Thai（泰语）</strong>。选择 Thai 作为目标语言并提交时，后端将返回错误。请切换为 OpenAI TTS 后再翻译泰语视频。
                     </div>
                   </>
                 )}
