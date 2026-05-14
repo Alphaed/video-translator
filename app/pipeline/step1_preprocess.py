@@ -13,17 +13,35 @@ import torch
 import torchaudio
 import demucs.separate
 
-# ── torchaudio.save 兼容补丁 ──────────────────────────────────
-# torchaudio 2.x 新版本默认走 torchcodec（需要 FFmpeg 共享库）
-# 在 PyInstaller 打包环境中 torchcodec 无法加载，回退到 soundfile
+# ── torchaudio load/save 兼容补丁 ────────────────────────────
+# 新版 torchaudio 把 torchcodec 作为硬依赖（load 和 save 都走它）。
+# PyInstaller 打包环境 / 无 conda 双击启动时 torchcodec 不可用，
+# 统一用 soundfile 作为回退后端。
 try:
     torchaudio.set_audio_backend("soundfile")
 except Exception:
-    pass  # 新版本已废弃此方法
+    pass  # 新版本已废弃此方法，忽略
 
 try:
     import soundfile as _sf
+    import numpy as _np
 
+    # ── torchaudio.load 补丁 ──────────────────────────────────
+    _orig_ta_load = torchaudio.load
+
+    def _safe_ta_load(uri, *args, **kwargs):
+        try:
+            return _orig_ta_load(uri, *args, **kwargs)
+        except (RuntimeError, ImportError):
+            # torchcodec 不可用，回退到 soundfile 读取
+            data, sr = _sf.read(str(uri), always_2d=True)
+            # soundfile → (frames, channels)，torchaudio → (channels, frames)
+            tensor = torch.from_numpy(data.T.astype("float32"))
+            return tensor, sr
+
+    torchaudio.load = _safe_ta_load
+
+    # ── torchaudio.save 补丁 ──────────────────────────────────
     _orig_ta_save = torchaudio.save
 
     def _safe_ta_save(uri, src, sample_rate, channels_first=True, **kwargs):
@@ -31,14 +49,14 @@ try:
             return _orig_ta_save(uri, src, sample_rate,
                                  channels_first=channels_first, **kwargs)
         except (RuntimeError, ImportError):
-            # torchcodec 不可用，直接用 soundfile 保存
-            import numpy as _np
+            # torchcodec 不可用，回退到 soundfile 写入
             data = src.detach().cpu().numpy() if isinstance(src, torch.Tensor) else src
             if channels_first and data.ndim == 2:
                 data = data.T          # soundfile 期望 (frames, channels)
             _sf.write(str(uri), data, sample_rate)
 
     torchaudio.save = _safe_ta_save
+
 except Exception:
     pass  # soundfile 不可用则保持原样，运行时再报错
 

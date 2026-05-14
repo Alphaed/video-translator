@@ -36,6 +36,7 @@ datas += cv2_datas
 datas += jaraco_datas
 datas += dashscope_datas
 datas += openai_datas
+datas += torchaudio_datas
 
 # ── 需要显式声明的隐式导入 ────────────────────────────────────
 hiddenimports = [
@@ -95,11 +96,12 @@ hiddenimports += cv2_hidden
 hiddenimports += jaraco_hidden
 hiddenimports += dashscope_hidden
 hiddenimports += openai_hidden
+hiddenimports += torchaudio_hidden
 
 a = Analysis(
     ["app_launcher.py"],
     pathex=["."],
-    binaries=torch_bins + demucs_bins + webview_bins + cv2_bins + jaraco_bins + dashscope_bins + openai_bins,
+    binaries=torch_bins + demucs_bins + webview_bins + cv2_bins + jaraco_bins + dashscope_bins + openai_bins + torchaudio_bins,
     datas=datas,
     hiddenimports=hiddenimports,
     hookspath=[],

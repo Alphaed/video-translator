@@ -6,17 +6,28 @@ const API = window.location.origin;
 function PreviewPanel({ completed, taskId, lang, progress }) {
   const videoRef = useRef(null);
 
-  function download(type) {
+  async function download(type) {
     if (!taskId || !completed) return;
-    const urls = {
-      video:      `${API}/tasks/${taskId}/download/video`,
-      srt:        `${API}/tasks/${taskId}/download/srt`,
-      transcript: `${API}/tasks/${taskId}/download/transcript`,
+    const paths = {
+      video:      `/tasks/${taskId}/download/video`,
+      srt:        `/tasks/${taskId}/download/srt`,
+      transcript: `/tasks/${taskId}/download/transcript`,
     };
-    const a = document.createElement('a');
-    a.href = urls[type];
-    a.download = type === 'video' ? 'output.mp4' : type === 'srt' ? 'output.srt' : 'transcript.txt';
-    a.click();
+    const filenames = {
+      video:      'output.mp4',
+      srt:        'output.srt',
+      transcript: 'transcript.txt',
+    };
+    // 打包版（WKWebView）：用原生存储对话框
+    if (window.pywebview?.api?.download) {
+      await window.pywebview.api.download(paths[type], filenames[type]);
+    } else {
+      // 浏览器开发模式：普通 <a download>
+      const a = document.createElement('a');
+      a.href = API + paths[type];
+      a.download = filenames[type];
+      a.click();
+    }
   }
 
   return (

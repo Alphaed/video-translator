@@ -26,6 +26,18 @@ if BASE_DIR not in sys.path:
 # 切换工作目录，确保 config.yaml / outputs / workspace 等相对路径正常
 os.chdir(BASE_DIR)
 
+# ── SSL 证书修复 ─────────────────────────────────────────────────
+# 双击 .app 启动时 macOS 环境极简，SSL 握手可能挂起（联网 API 调用卡死）。
+# 用 certifi 内置证书包强制覆盖，保证 DashScope / OpenAI 等 HTTPS 请求正常。
+try:
+    import certifi as _certifi
+    _cert = _certifi.where()
+    os.environ.setdefault("SSL_CERT_FILE",      _cert)
+    os.environ.setdefault("REQUESTS_CA_BUNDLE", _cert)
+    os.environ.setdefault("CURL_CA_BUNDLE",     _cert)
+except Exception:
+    pass
+
 HOST       = "127.0.0.1"
 START_PORT = 8000
 
@@ -231,6 +243,51 @@ def _run_server(port: int) -> None:
     )
 
 
+class JsApi:
+    """
+    暴露给前端的 Python API（通过 window.pywebview.api 调用）。
+    主要用于在 WKWebView 中触发原生文件保存对话框，
+    因为 WKWebView 不支持 <a download> 属性。
+    """
+
+    def __init__(self) -> None:
+        self.base_url: str = ""
+
+    def download(self, rel_path: str, filename: str) -> bool:
+        """
+        弹出原生 NSSavePanel，用户选择路径后从后端下载文件并保存。
+        rel_path: 相对路径，如 /tasks/xxx/download/video
+        filename: 建议文件名
+        """
+        try:
+            import threading
+            import urllib.request
+            import AppKit
+            from Foundation import NSOperationQueue
+
+            chosen: list = [None]
+            evt = threading.Event()
+
+            def _show_panel() -> None:
+                panel = AppKit.NSSavePanel.savePanel()
+                panel.setNameFieldStringValue_(filename)
+                if panel.runModal() == AppKit.NSModalResponseOK:
+                    chosen[0] = str(panel.URL().path())
+                evt.set()
+
+            NSOperationQueue.mainQueue().addOperationWithBlock_(_show_panel)
+            evt.wait(timeout=120)   # 等待用户操作，最多 2 分钟
+
+            if chosen[0]:
+                urllib.request.urlretrieve(
+                    f"{self.base_url}{rel_path}", chosen[0]
+                )
+                return True
+        except Exception as exc:
+            print(f"[download] 保存失败: {exc}")
+        return False
+
+
 def _error_window(message: str) -> None:
     """显示一个简单错误弹窗然后退出"""
     import webview
@@ -266,6 +323,10 @@ def main() -> None:
         _error_window(str(e))
         return
 
+    # ── 1.5 初始化 JS API（需要 port 才能构造 base_url）──────
+    js_api = JsApi()
+    js_api.base_url = f"http://{HOST}:{port}"
+
     # ── 2. 先展示加载窗口 ──────────────────────────────────
     window = webview.create_window(
         title="Schai",
@@ -276,6 +337,7 @@ def main() -> None:
         text_select=False,
         zoomable=False,
         background_color='#FAF7F2',   # 防止加载时白屏闪烁
+        js_api=js_api,                # 暴露原生下载 API 给前端
     )
 
     def on_shown():

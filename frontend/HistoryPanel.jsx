@@ -69,12 +69,19 @@ function TaskListItem({ item, selected, onClick }) {
 }
 
 function DownloadRow({ label, desc, url, filename, disabled }) {
-  function handleDownload() {
+  async function handleDownload() {
     if (disabled) return;
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
+    // 打包版（WKWebView）：用原生存储对话框
+    if (window.pywebview?.api?.download) {
+      const path = url.replace(window.location.origin, '');
+      await window.pywebview.api.download(path, filename);
+    } else {
+      // 浏览器开发模式：普通 <a download>
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+    }
   }
   return (
     <div style={{

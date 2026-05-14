@@ -23,6 +23,7 @@ from app.utils.ffmpeg_utils import (
     replace_audio,
     slowdown_video_segment,
     get_video_duration,
+    run_ffmpeg,
 )
 
 logger = logging.getLogger(__name__)
@@ -40,10 +41,25 @@ def _get_face_cascade():
     """懒加载人脸检测器（只初始化一次）"""
     global _FACE_CASCADE
     if _FACE_CASCADE is None:
-        # OpenCV 内置的 Haar Cascade 分类器
-        _FACE_CASCADE = cv2.CascadeClassifier(
-            cv2.data.haarcascades + "haarcascade_frontalface_default.xml"
-        )
+        import os, sys, glob as _glob
+        cascade_file = "haarcascade_frontalface_default.xml"
+
+        # 方法 1：cv2.data.haarcascades（标准路径）
+        cascade_path = cv2.data.haarcascades + cascade_file
+
+        # 方法 2：PyInstaller 打包环境下在 _MEIPASS 目录中递归查找
+        if not os.path.isfile(cascade_path) and hasattr(sys, "_MEIPASS"):
+            matches = _glob.glob(
+                os.path.join(sys._MEIPASS, "**", cascade_file), recursive=True
+            )
+            if matches:
+                cascade_path = matches[0]
+                logger.info(f"[cv2] 使用备用 cascade 路径: {cascade_path}")
+
+        if not os.path.isfile(cascade_path):
+            logger.warning(f"[cv2] 未找到 {cascade_file}，人脸检测将始终返回 False")
+
+        _FACE_CASCADE = cv2.CascadeClassifier(cascade_path)
     return _FACE_CASCADE
 
 

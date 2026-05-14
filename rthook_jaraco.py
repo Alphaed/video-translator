@@ -1,18 +1,39 @@
 # rthook_jaraco.py — 运行时钩子（在所有模块导入前执行）
 
 import os
-
-# OpenSSL 3.0 打包环境下 legacy provider 无法加载，禁用它
-os.environ.setdefault("CRYPTOGRAPHY_OPENSSL_NO_LEGACY", "1")
-# pkg_resources 启动时会从 jaraco.text 导入几个工具函数。
-# jaraco 是命名空间包，PyInstaller 无法正确打包，
-# 此钩子在 pkg_resources 加载前注入带真实实现的桩模块。
-
 import sys
 from types import ModuleType
 
+# ── OpenSSL 修复 ──────────────────────────────────────────────
+# OpenSSL 3.0 打包环境下 legacy provider 无法加载，禁用它
+os.environ.setdefault("CRYPTOGRAPHY_OPENSSL_NO_LEGACY", "1")
+
+# ── torchaudio 后端修复 ───────────────────────────────────────
+# torchaudio 2.x 默认尝试加载 torchcodec（需要 FFmpeg 共享库）。
+# 双击 .app 启动时没有 conda 路径，libtorchcodec_core4 找不到会崩溃。
+# 在这里预先桩掉 torchcodec，让 torchaudio 自动回退到 soundfile 后端。
+os.environ.setdefault("TORCHAUDIO_USE_BACKEND_DISPATCHER", "0")
+
+def _stub_torchcodec():
+    _names = [
+        "torchcodec",
+        "torchcodec._internally_replaced_utils",
+        "torchcodec.decoders",
+        "torchcodec.decoders._core",
+        "torchcodec.encoders",
+    ]
+    for _n in _names:
+        if _n not in sys.modules:
+            _m = ModuleType(_n)
+            _m.__path__ = []
+            sys.modules[_n] = _m
+
+_stub_torchcodec()
 
 # ── jaraco.text 桩 ────────────────────────────────────────────
+# pkg_resources 启动时会从 jaraco.text 导入几个工具函数。
+# jaraco 是命名空间包，PyInstaller 无法正确打包，
+# 此钩子在 pkg_resources 加载前注入带真实实现的桩模块。
 # pkg_resources 用到的函数：drop_comment / join_continuation / yield_lines
 
 def _drop_comment(line):

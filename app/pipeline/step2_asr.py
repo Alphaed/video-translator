@@ -39,7 +39,7 @@ async def run_asr(task: TranslationTask, config: dict) -> None:
 
     # ── 转换为 16kHz 单声道 WAV（Recognition 要求）────────────────
     converted_path = workspace / "asr_input.wav"
-    _convert_to_16k_mono(audio_path, converted_path)
+    _convert_to_16k_mono(audio_path, converted_path, config)
     logger.info(f"[{task.task_id}] 已转换为 16kHz 单声道: {converted_path}")
 
     # ── 调用 DashScope ASR（Recognition，支持本地文件）─────────────
@@ -87,10 +87,11 @@ async def run_asr(task: TranslationTask, config: dict) -> None:
             f.write(f"[{seg.start:.2f} --> {seg.end:.2f}] {seg.original_text}\n")
 
 
-def _convert_to_16k_mono(src: Path, dst: Path) -> None:
+def _convert_to_16k_mono(src: Path, dst: Path, config: dict) -> None:
     """用 ffmpeg 将音频转为 16kHz 单声道 WAV"""
+    ffmpeg = config.get("paths", {}).get("ffmpeg", "ffmpeg")
     subprocess.run([
-        "ffmpeg", "-y", "-i", str(src),
+        ffmpeg, "-y", "-i", str(src),
         "-ac", "1", "-ar", "16000", "-sample_fmt", "s16",
         str(dst),
     ], capture_output=True, check=True)
