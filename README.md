@@ -1,3 +1,5 @@
+[English](README_EN.md) | 中文
+
 # 🎬 Video Translator
 
 <div align="center">
@@ -146,6 +148,7 @@ video-translator/
 ├── config.yaml              # 配置文件（本地，不上传 Git）
 ├── config.example.yaml      # 配置模板
 ├── requirements.txt
+├── rthook_jaraco.py      # PyInstaller 打包修复：解决 jaraco 包导入错误
 └── app/
     ├── models/schemas.py    # 数据结构定义
     ├── pipeline/
@@ -174,7 +177,7 @@ video-translator/
 ---
 
 ## 📦 macOS 桌面版（Schai）
-
+> **Schai** 是 Video Translator 的 macOS 打包版，基于 PyInstaller + PyWebView 构建。无需配置 Python 环境，开箱即用，与源码版功能完全一致。
 不想配置环境？直接下载桌面应用：
 
 👉 **[下载 Schai.dmg（v1.0.0）](https://github.com/Alphaed/video-translator/releases/latest)**
