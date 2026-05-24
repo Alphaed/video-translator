@@ -184,6 +184,12 @@ video-translator/
 
 ---
 
+## 📬 联系方式
+
+- Telegram: [@romsang](https://t.me/romsang)
+
+---
+
 ## 📄 License
 
 [MIT License](LICENSE)

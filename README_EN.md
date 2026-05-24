@@ -178,6 +178,12 @@ See [CHANGELOG.md](CHANGELOG.md) for a full history of changes.
 
 ---
 
+## Contact
+
+- Telegram: [@romsang](https://t.me/romsang)
+
+---
+
 ## License
 
 [MIT License](LICENSE)
